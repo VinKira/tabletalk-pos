@@ -25,12 +25,11 @@ export default function App() {
   useEffect(() => {
     if (!activeSession) return;
 
-    // Supabase Realtime Subscription untuk update pesanan masuk
     const channel = supabase
       .channel('schema-db-changes')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, (payload) => {
         if (payload.new.session_id === activeSession.id) {
-          fetchTableOrders(activeSession.id);
+          console.log('Pesanan baru masuk dari Self-Order:', payload.new);
         }
       })
       .subscribe();
@@ -59,29 +58,24 @@ export default function App() {
     };
 
     setOrderBatches([...orderBatches, newBatch]);
-    
-    // Auto trigger cetak label dapur
     printKitchenLabel(item.name, item.category);
   };
 
-  // --- 4. Print Label Dapur via Web Bluetooth API ---
+  // --- 3. Print Label Dapur via Web Bluetooth API ---
   const printKitchenLabel = async (itemName, category) => {
     try {
-      // Menghubungkan ke Printer Thermal Bluetooth Dapur
-      const device = await navigator.bluetooth.requestDevice({
-        filters: [{ services: ['000018f0-0000-1000-8000-00805f9b34fb'] }] // Standard POS Printer Service
-      });
-      const server = await device.gatt.connect();
-      // Proses kirim ESC/POS Command printer label...
-      console.log(`[PRINT LABEL OK] ${itemName} (${category})`);
+      if (navigator.bluetooth) {
+        await navigator.bluetooth.requestDevice({
+          filters: [{ services: ['000018f0-0000-1000-8000-00805f9b34fb'] }]
+        });
+      }
     } catch (err) {
       console.log('Simulation Mode: Print Label ->', itemName);
     }
   };
 
-  // --- 3. Close Table & Rekap Total ---
+  // --- 4. Close Table & Rekap Total ---
   const handleCloseTable = () => {
-    // Penggabungan (Recap) seluruh item dari berbagai batch
     const recapMap = {};
     orderBatches.forEach(batch => {
       batch.items.forEach(item => {
@@ -102,7 +96,7 @@ export default function App() {
   // --- UI Login View ---
   if (!userRole) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', fontFamily: 'sans-serif' }}>
+      <div style={{ padding: 40, textAlign: 'center', fontFamily: 'sans-serif', color: '#fff' }}>
         <h2>Login System POS TableTalk</h2>
         <div style={{ display: 'flex', gap: 20, justifyContent: 'center', marginTop: 20 }}>
           <button onClick={() => setUserRole('cashier')} style={btnStyle}>Login sebagai Kasir</button>
@@ -115,7 +109,7 @@ export default function App() {
   // --- UI Owner View ---
   if (userRole === 'owner') {
     return (
-      <div style={{ padding: 20, fontFamily: 'sans-serif' }}>
+      <div style={{ padding: 20, fontFamily: 'sans-serif', color: '#fff' }}>
         <h2>Dashboard Owner</h2>
         <p>Ringkasan Laporan Penjualan Realtime & Manajemen Stock.</p>
         <button onClick={() => setUserRole(null)} style={btnDanger}>Logout</button>
@@ -127,10 +121,10 @@ export default function App() {
   const recapData = activeSession ? handleCloseTable() : { recapList: [], grandTotal: 0 };
 
   return (
-    <div style={{ display: 'flex', height: '100vh', fontFamily: 'sans-serif' }}>
+    <div style={{ display: 'flex', height: '100vh', fontFamily: 'sans-serif', color: '#333' }}>
       
       {/* Panel Kiri: Grid Meja & Menu */}
-      <div style={{ flex: 2, padding: 20, borderRight: '1px solid #ddd' }}>
+      <div style={{ flex: 2, padding: 20, borderRight: '1px solid #ddd', background: '#fff' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2>Daftar Meja</h2>
           <button onClick={() => setUserRole(null)} style={btnDanger}>Logout Kasir</button>
@@ -179,7 +173,7 @@ export default function App() {
           <p>Silakan klik salah satu meja untuk membuka sesi transaksi.</p>
         ) : (
           <>
-            {/* Timeline Batch Order (Manual vs Self Order) */}
+            {/* Timeline Batch Order */}
             <div style={{ marginBottom: 20 }}>
               <h4>Daftar Urutan Order (Batch Timeline):</h4>
               {orderBatches.map((batch, idx) => (
@@ -213,7 +207,7 @@ export default function App() {
 
               <button 
                 onClick={() => {
-                  alert('Pembayaran Sukses! Struk Struk Terpesan.');
+                  alert('Pembayaran Sukses! Struk Terpesan.');
                   setTables(tables.map(t => t.id === selectedTable.id ? { ...t, status: 'available' } : t));
                   setSelectedTable(null);
                   setActiveSession(null);
@@ -231,6 +225,5 @@ export default function App() {
   );
 }
 
-// Styling ringkas
 const btnStyle = { padding: '10px 15px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' };
 const btnDanger = { ...btnStyle, background: '#dc2626' };
