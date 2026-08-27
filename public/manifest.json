@@ -1,0 +1,16 @@
+{
+  "short_name": "TableTalk POS",
+  "name": "Table Talk Coffee Shop POS",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": ".",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "display": "standalone",
+  "orientation": "landscape"
+}
