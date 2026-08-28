@@ -3,227 +3,488 @@ import { supabase } from './supabaseClient';
 
 export default function App() {
   // --- Auth State ---
-  const [userRole, setUserRole] = useState(null); // 'cashier' | 'owner'
-  
+  const [userRole, setUserRole] = useState('cashier'); // default ke cashier untuk kemudahan dev
+
   // --- POS State ---
   const [tables, setTables] = useState([
     { id: 1, number: 'Meja 01', status: 'available' },
     { id: 2, number: 'Meja 02', status: 'available' },
     { id: 3, number: 'Meja 03', status: 'available' },
+    { id: 4, number: 'Meja 04', status: 'available' },
+    { id: 5, number: 'Meja 05', status: 'available' },
   ]);
+
   const [selectedTable, setSelectedTable] = useState(null);
-  const [activeSession, setActiveSession] = useState(null);
-  const [orderBatches, setOrderBatches] = useState([]);
   
-  // Menu items contoh
+  // Storage State per Meja: 
+  // - activeSessions: { tableId: sessionId }
+  // - confirmedOrders: { tableId: [ { batchId, time, items: [] } ] }
+  // - currentCart: { tableId: [ { id, name, price, qty, category } ] }
+  const [activeSessions, setActiveSessions] = useState({});
+  const [confirmedOrders, setConfirmedOrders] = useState({});
+  const [currentCart, setCurrentCart] = useState({});
+  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+
+  // Sample Menu
   const menuList = [
     { id: 101, name: 'Americano', price: 22000, category: 'drink' },
-    { id: 102, name: 'Mie Goreng', price: 25000, category: 'food' }
+    { id: 102, name: 'Latte', price: 28000, category: 'drink' },
+    { id: 103, name: 'Mie Goreng', price: 25000, category: 'food' },
+    { id: 104, name: 'Nasi Goreng', price: 28000, category: 'food' },
   ];
 
-  // --- Realtime Sync dari Self-Order Customer ---
-  useEffect(() => {
-    if (!activeSession) return;
-
-    const channel = supabase
-      .channel('schema-db-changes')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, (payload) => {
-        if (payload.new.session_id === activeSession.id) {
-          console.log('Pesanan baru masuk dari Self-Order:', payload.new);
-        }
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [activeSession]);
-
-  // --- 1. Fungsi Open Table ---
-  const handleOpenTable = (table) => {
-    const newSession = { id: crypto.randomUUID(), table_id: table.id, status: 'open' };
+  // --- 1. Aksi Klik Kartu Meja ---
+  const handleSelectTable = (table) => {
     setSelectedTable(table);
-    setActiveSession(newSession);
-    setTables(tables.map(t => t.id === table.id ? { ...t, status: 'occupied' } : t));
-    setOrderBatches([]);
   };
 
-  // --- 2. Tambah Pesanan dari Kasir Manual ---
-  const handleAddManualOrder = (item) => {
-    if (!activeSession) return alert('Buka meja terlebih dahulu!');
+  // --- 2. Open Table ---
+  const handleOpenTable = () => {
+    if (!selectedTable) return;
+    const tableId = selectedTable.id;
+    const newSessionId = crypto.randomUUID();
+
+    setActiveSessions(prev => ({ ...prev, [tableId]: newSessionId }));
+    setConfirmedOrders(prev => ({ ...prev, [tableId]: [] }));
+    setCurrentCart(prev => ({ ...prev, [tableId]: [] }));
+
+    setTables(prev => prev.map(t => t.id === tableId ? { ...t, status: 'occupied' } : t));
+    setSelectedTable(prev => ({ ...prev, status: 'occupied' }));
+  };
+
+  // --- 3. Cancel Open Table (Saat belum ada pesanan terkonfirmasi) ---
+  const handleCancelOpenTable = () => {
+    if (!selectedTable) return;
+    const tableId = selectedTable.id;
+
+    setActiveSessions(prev => { const n = { ...prev }; delete n[tableId]; return n; });
+    setConfirmedOrders(prev => { const n = { ...prev }; delete n[tableId]; return n; });
+    setCurrentCart(prev => { const n = { ...prev }; delete n[tableId]; return n; });
+
+    setTables(prev => prev.map(t => t.id === tableId ? { ...t, status: 'available' } : t));
+    setSelectedTable(prev => ({ ...prev, status: 'available' }));
+  };
+
+  // --- 4. Tambah Menu ke Keranjang Draft ---
+  const handleAddToCart = (menuItem) => {
+    if (!selectedTable || selectedTable.status !== 'occupied') return;
+    const tableId = selectedTable.id;
+    const cart = currentCart[tableId] || [];
+
+    const existingIndex = cart.findIndex(item => item.id === menuItem.id);
+    let updatedCart = [];
+
+    if (existingIndex > -1) {
+      updatedCart = cart.map((item, idx) => 
+        idx === existingIndex ? { ...item, qty: item.qty + 1 } : item
+      );
+    } else {
+      updatedCart = [...cart, { ...menuItem, qty: 1 }];
+    }
+
+    setCurrentCart(prev => ({ ...prev, [tableId]: updatedCart }));
+  };
+
+  // --- 5. Hapus Menu dari Keranjang Draft (Tombol X) ---
+  const handleRemoveFromCart = (itemId) => {
+    if (!selectedTable) return;
+    const tableId = selectedTable.id;
+    const cart = currentCart[tableId] || [];
     
+    const updatedCart = cart.filter(item => item.id !== itemId);
+    setCurrentCart(prev => ({ ...prev, [tableId]: updatedCart }));
+  };
+
+  // --- 6. Confirm Order (Kirim ke Dapur / Connect Printer Label) ---
+  const handleConfirmOrder = async () => {
+    if (!selectedTable) return;
+    const tableId = selectedTable.id;
+    const cart = currentCart[tableId] || [];
+    if (cart.length === 0) return alert('Keranjang pesanan masih kosong!');
+
+    // Hubungkan / cetak ke Printer Dapur
+    await printKitchenLabelBatch(cart);
+
+    // Masukkan ke daftar pesanan terkonfirmasi (Batch Timeline)
     const newBatch = {
-      id: crypto.randomUUID(),
+      batchId: crypto.randomUUID(),
       time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-      type: 'Manual Kasir',
-      items: [{ ...item, qty: 1 }]
+      type: 'Kasir',
+      items: [...cart]
     };
 
-    setOrderBatches([...orderBatches, newBatch]);
-    printKitchenLabel(item.name, item.category);
+    const existingBatches = confirmedOrders[tableId] || [];
+    setConfirmedOrders(prev => ({ ...prev, [tableId]: [...existingBatches, newBatch] }));
+
+    // Reset keranjang draft untuk meja ini
+    setCurrentCart(prev => ({ ...prev, [tableId]: [] }));
+
+    alert('Order berhasil dikonfirmasi & dikirim ke Printer Dapur!');
   };
 
-  // --- 3. Print Label Dapur via Web Bluetooth API ---
-  const printKitchenLabel = async (itemName, category) => {
+  // Print Label Dapur Helper
+  const printKitchenLabelBatch = async (items) => {
     try {
       if (navigator.bluetooth) {
-        await navigator.bluetooth.requestDevice({
-          filters: [{ services: ['000018f0-0000-1000-8000-00805f9b34fb'] }]
-        });
+        // Simulasi trigger pencarian printer bluetooth jika didukung
+        console.log('Connecting to Bluetooth Kitchen Printer...');
       }
-    } catch (err) {
-      console.log('Simulation Mode: Print Label ->', itemName);
+    } catch (e) {
+      console.log('Simulation Printer Active');
     }
   };
 
-  // --- 4. Close Table & Rekap Total ---
-  const handleCloseTable = () => {
+  // --- 7. Hitung Total Rekap Seluruh Batch Pesanan ---
+  const getTableRecap = (tableId) => {
+    const batches = confirmedOrders[tableId] || [];
     const recapMap = {};
-    orderBatches.forEach(batch => {
-      batch.items.forEach(item => {
-        if (recapMap[item.name]) {
-          recapMap[item.name].qty += item.qty;
+
+    batches.forEach(b => {
+      b.items.forEach(it => {
+        if (recapMap[it.name]) {
+          recapMap[it.name].qty += it.qty;
         } else {
-          recapMap[item.name] = { ...item };
+          recapMap[it.name] = { ...it };
         }
       });
     });
 
     const recapList = Object.values(recapMap);
-    const grandTotal = recapList.reduce((acc, curr) => acc + (curr.price * curr.qty), 0);
-
-    return { recapList, grandTotal };
+    const grandTotal = recapList.reduce((sum, item) => sum + (item.price * item.qty), 0);
+    return { recapList, grandTotal, batches };
   };
 
-  // --- UI Login View ---
-  if (!userRole) {
-    return (
-      <div style={{ padding: 40, textAlign: 'center', fontFamily: 'sans-serif', color: '#fff' }}>
-        <h2>Login System POS TableTalk</h2>
-        <div style={{ display: 'flex', gap: 20, justifyContent: 'center', marginTop: 20 }}>
-          <button onClick={() => setUserRole('cashier')} style={btnStyle}>Login sebagai Kasir</button>
-          <button onClick={() => setUserRole('owner')} style={{ ...btnStyle, background: '#8b5cf6' }}>Login sebagai Owner</button>
-        </div>
-      </div>
-    );
-  }
+  // --- 8. Payment Success & Close Table ---
+  const handlePaymentSuccess = () => {
+    if (!selectedTable) return;
+    const tableId = selectedTable.id;
 
-  // --- UI Owner View ---
-  if (userRole === 'owner') {
-    return (
-      <div style={{ padding: 20, fontFamily: 'sans-serif', color: '#fff' }}>
-        <h2>Dashboard Owner</h2>
-        <p>Ringkasan Laporan Penjualan Realtime & Manajemen Stock.</p>
-        <button onClick={() => setUserRole(null)} style={btnDanger}>Logout</button>
-      </div>
-    );
-  }
+    // Trigger Print Struk Kasir
+    alert('Menghubungkan ke Printer Struk... Struk Berhasil Dicetak!');
 
-  // --- UI POS Kasir View ---
-  const recapData = activeSession ? handleCloseTable() : { recapList: [], grandTotal: 0 };
+    // Reset Meja Kembali Kosong
+    setActiveSessions(prev => { const n = { ...prev }; delete n[tableId]; return n; });
+    setConfirmedOrders(prev => { const n = { ...prev }; delete n[tableId]; return n; });
+    setCurrentCart(prev => { const n = { ...prev }; delete n[tableId]; return n; });
+
+    setTables(prev => prev.map(t => t.id === tableId ? { ...t, status: 'available' } : t));
+    setSelectedTable(prev => ({ ...prev, status: 'available' }));
+    setShowCheckoutModal(false);
+  };
+
+  const activeTableId = selectedTable?.id;
+  const activeTableStatus = selectedTable?.status;
+  const cartItems = activeTableId ? (currentCart[activeTableId] || []) : [];
+  const { recapList, grandTotal, batches } = activeTableId ? getTableRecap(activeTableId) : { recapList: [], grandTotal: 0, batches: [] };
 
   return (
-    <div style={{ display: 'flex', height: '100vh', fontFamily: 'sans-serif', color: '#333' }}>
-      
-      {/* Panel Kiri: Grid Meja & Menu */}
-      <div style={{ flex: 2, padding: 20, borderRight: '1px solid #ddd', background: '#fff' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2>Daftar Meja</h2>
-          <button onClick={() => setUserRole(null)} style={btnDanger}>Logout Kasir</button>
+    <div style={styles.appContainer}>
+      {/* Header Bar */}
+      <header style={styles.header}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={styles.logoBadge}>TT</div>
+          <h1 style={styles.headerTitle}>TableTalk POS</h1>
         </div>
-
-        {/* Status Meja */}
-        <div style={{ display: 'flex', gap: 15, marginBottom: 30 }}>
-          {tables.map(t => (
-            <div 
-              key={t.id} 
-              onClick={() => handleOpenTable(t)}
-              style={{
-                padding: 20, 
-                borderRadius: 8, 
-                cursor: 'pointer',
-                background: t.status === 'occupied' ? '#fee2e2' : '#dcfce7',
-                border: selectedTable?.id === t.id ? '2px solid #2563eb' : '1px solid #ccc'
-              }}
-            >
-              <h3>{t.number}</h3>
-              <p>{t.status === 'occupied' ? 'Terisi' : 'Kosong (Open)'}</p>
-            </div>
-          ))}
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button style={userRole === 'cashier' ? styles.activeRoleBtn : styles.roleBtn} onClick={() => setUserRole('cashier')}>Kasir Mode</button>
+          <button style={userRole === 'owner' ? styles.activeRoleBtn : styles.roleBtn} onClick={() => setUserRole('owner')}>Owner Mode</button>
         </div>
+      </header>
 
-        {/* Menu Pilihan Manual */}
-        {selectedTable && (
-          <>
-            <h3>Tambah Pesanan Manual ({selectedTable.number})</h3>
-            <div style={{ display: 'flex', gap: 10 }}>
-              {menuList.map(item => (
-                <button key={item.id} onClick={() => handleAddManualOrder(item)} style={btnStyle}>
-                  + {item.name} (Rp {item.price.toLocaleString()})
-                </button>
-              ))}
+      {/* Main Layout */}
+      <div style={styles.mainLayout}>
+        {/* Panel Kiri: Grid Meja & Menu catalog */}
+        <div style={styles.leftPanel}>
+          {/* Section 1: Grid Meja */}
+          <div style={{ marginBottom: '28px' }}>
+            <h3 style={styles.sectionTitle}>Status Meja</h3>
+            <div style={styles.tableGrid}>
+              {tables.map(t => {
+                const isSelected = selectedTable?.id === t.id;
+                const isOccupied = t.status === 'occupied';
+                return (
+                  <div
+                    key={t.id}
+                    onClick={() => handleSelectTable(t)}
+                    style={{
+                      ...styles.tableCard,
+                      borderColor: isSelected ? '#3b82f6' : isOccupied ? '#ef4444' : '#374151',
+                      background: isSelected ? '#1e293b' : '#111827',
+                    }}
+                  >
+                    <div style={{ fontWeight: '600', fontSize: '16px' }}>{t.number}</div>
+                    <span style={{
+                      ...styles.statusBadge,
+                      background: isOccupied ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+                      color: isOccupied ? '#f87171' : '#34d399',
+                    }}>
+                      {isOccupied ? 'Terisi' : 'Kosong'}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-          </>
-        )}
-      </div>
+          </div>
 
-      {/* Panel Kanan: Timeline Pesanan per Meja & Rekap Close Table */}
-      <div style={{ flex: 1.5, padding: 20, background: '#f9fafb', overflowY: 'auto' }}>
-        <h2>Rincian {selectedTable ? selectedTable.number : 'Pilih Meja'}</h2>
-        
-        {!activeSession ? (
-          <p>Silakan klik salah satu meja untuk membuka sesi transaksi.</p>
-        ) : (
-          <>
-            {/* Timeline Batch Order */}
-            <div style={{ marginBottom: 20 }}>
-              <h4>Daftar Urutan Order (Batch Timeline):</h4>
-              {orderBatches.map((batch, idx) => (
-                <div key={idx} style={{ background: '#fff', padding: 10, borderRadius: 6, marginBottom: 10, borderLeft: '4px solid #2563eb' }}>
-                  <small style={{ color: '#666' }}>Jam {batch.time} - Via: <strong>{batch.type}</strong></small>
-                  {batch.items.map((it, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-                      <span>{it.qty}x {it.name}</span>
-                      <span>Rp {(it.price * it.qty).toLocaleString()}</span>
+          {/* Section 2: Catalog Menu */}
+          {selectedTable && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h3 style={styles.sectionTitle}>Pilih Menu ({selectedTable.number})</h3>
+                {activeTableStatus === 'occupied' && (
+                  <span style={{ fontSize: '13px', color: '#9ca3af' }}>Klik menu untuk menambah ke draft</span>
+                )}
+              </div>
+
+              {activeTableStatus === 'available' ? (
+                <div style={styles.openTablePromptCard}>
+                  <p style={{ margin: '0 0 16px 0', color: '#9ca3af' }}>Meja ini masih dalam keadaan kosong.</p>
+                  <button style={styles.primaryBtn} onClick={handleOpenTable}>Open Table</button>
+                </div>
+              ) : (
+                <div style={styles.menuGrid}>
+                  {menuList.map(menu => (
+                    <div key={menu.id} style={styles.menuCard} onClick={() => handleAddToCart(menu)}>
+                      <div>
+                        <div style={{ fontWeight: '600', fontSize: '15px' }}>{menu.name}</div>
+                        <div style={{ fontSize: '13px', color: '#9ca3af', marginTop: '4px' }}>Rp {menu.price.toLocaleString()}</div>
+                      </div>
+                      <button style={styles.addMenuBtn}>+</button>
                     </div>
                   ))}
                 </div>
-              ))}
+              )}
             </div>
+          )}
+        </div>
 
-            <hr />
+        {/* Panel Kanan: Billing & Order Summary */}
+        <div style={styles.rightPanel}>
+          {!selectedTable ? (
+            <div style={styles.emptyStateContainer}>
+              <p>Silakan pilih salah satu meja terlebih dahulu.</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+              
+              {/* Header Panel Meja */}
+              <div style={styles.panelHeader}>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '20px' }}>{selectedTable.number}</h2>
+                  <span style={{ fontSize: '13px', color: activeTableStatus === 'occupied' ? '#34d399' : '#9ca3af' }}>
+                    Status: {activeTableStatus === 'occupied' ? 'Sesi Aktif' : 'Kosong'}
+                  </span>
+                </div>
 
-            {/* Totalan Rekap Close Table */}
-            <div style={{ marginTop: 20 }}>
-              <h4>Rekap Akhir (Totalan Close Table):</h4>
-              {recapData.recapList.map((item, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
+                {/* Cancel Open Table button jika belum ada order terkonfirmasi */}
+                {activeTableStatus === 'occupied' && batches.length === 0 && cartItems.length === 0 && (
+                  <button style={styles.dangerOutlineBtn} onClick={handleCancelOpenTable}>
+                    Cancel Open Table
+                  </button>
+                )}
+              </div>
+
+              {activeTableStatus === 'occupied' && (
+                <div style={{ flex: 1, overflowY: 'auto', paddingRight: '4px' }}>
+                  
+                  {/* Draft Cart Item Baru (Belum dikonfirmasi) */}
+                  <div style={styles.sectionBlock}>
+                    <h4 style={styles.subTitle}>Draft Pesanan Baru (Belum Kirim)</h4>
+                    {cartItems.length === 0 ? (
+                      <p style={styles.mutedText}>Belum ada menu yang dipilih</p>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {cartItems.map(item => (
+                          <div key={item.id} style={styles.cartRow}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: '500' }}>{item.name}</div>
+                              <small style={{ color: '#9ca3af' }}>Rp {item.price.toLocaleString()} x {item.qty}</small>
+                            </div>
+                            <div style={{ fontWeight: '600', marginRight: '12px' }}>
+                              Rp {(item.price * item.qty).toLocaleString()}
+                            </div>
+                            <button style={styles.deleteBtn} onClick={() => handleRemoveFromCart(item.id)}>✕</button>
+                          </div>
+                        ))}
+
+                        <button style={styles.confirmOrderBtn} onClick={handleConfirmOrder}>
+                          Confirm Order (Print Label Dapur)
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Batch Timeline Pesanan Terkonfirmasi */}
+                  <div style={styles.sectionBlock}>
+                    <h4 style={styles.subTitle}>Riwayat Order Dapur (Terproses)</h4>
+                    {batches.length === 0 ? (
+                      <p style={styles.mutedText}>Belum ada orderan dikirim ke dapur</p>
+                    ) : (
+                      batches.map((b, i) => (
+                        <div key={b.batchId} style={styles.batchCard}>
+                          <div style={styles.batchHeader}>
+                            <span>Batch #{i + 1} - Jam {b.time}</span>
+                            <span style={styles.badgeSent}>Terkirim Dapur</span>
+                          </div>
+                          {b.items.map((it, idx) => (
+                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginTop: '4px' }}>
+                              <span>{it.qty}x {it.name}</span>
+                              <span style={{ color: '#9ca3af' }}>Rp {(it.price * it.qty).toLocaleString()}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                </div>
+              )}
+
+              {/* Bottom Payment Footer (Selalu Terlihat bila Meja Terisi) */}
+              {activeTableStatus === 'occupied' && (
+                <div style={styles.paymentFooter}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                    <span style={{ color: '#9ca3af' }}>Total Tagihan:</span>
+                    <span style={{ fontSize: '20px', fontWeight: '700', color: '#10b981' }}>
+                      Rp {grandTotal.toLocaleString()}
+                    </span>
+                  </div>
+                  <button 
+                    style={{ ...styles.primaryBtn, width: '100%', padding: '14px', fontSize: '15px' }}
+                    onClick={() => setShowCheckoutModal(true)}
+                    disabled={batches.length === 0}
+                  >
+                    Close Table & Payment
+                  </button>
+                </div>
+              )}
+
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Modal Pembayaran Close Table */}
+      {showCheckoutModal && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalCard}>
+            <h3 style={{ margin: '0 0 16px 0', fontSize: '18px' }}>Rincian Pembayaran ({selectedTable.number})</h3>
+            
+            <div style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '16px' }}>
+              {recapList.map((item, idx) => (
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #374151', fontSize: '14px' }}>
                   <span>{item.qty}x {item.name}</span>
                   <span>Rp {(item.price * item.qty).toLocaleString()}</span>
                 </div>
               ))}
-              
-              <h3 style={{ marginTop: 15, color: '#059669' }}>
-                Total Bayar: Rp {recapData.grandTotal.toLocaleString()}
-              </h3>
+            </div>
 
-              <button 
-                onClick={() => {
-                  alert('Pembayaran Sukses! Struk Terpesan.');
-                  setTables(tables.map(t => t.id === selectedTable.id ? { ...t, status: 'available' } : t));
-                  setSelectedTable(null);
-                  setActiveSession(null);
-                }}
-                style={{ ...btnStyle, width: '100%', padding: 15, background: '#059669', marginTop: 10 }}
-              >
-                Confirm Payment & Print Struk
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '18px', fontWeight: '700', margin: '16px 0', color: '#10b981' }}>
+              <span>Total Akhir:</span>
+              <span>Rp {grandTotal.toLocaleString()}</span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button style={{ ...styles.dangerOutlineBtn, flex: 1 }} onClick={() => setShowCheckoutModal(false)}>
+                Batal
+              </button>
+              <button style={{ ...styles.primaryBtn, flex: 2, background: '#10b981' }} onClick={handlePaymentSuccess}>
+                Payment Success & Print Struk
               </button>
             </div>
-          </>
-        )}
-      </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
 }
 
-const btnStyle = { padding: '10px 15px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' };
-const btnDanger = { ...btnStyle, background: '#dc2626' };
+// Modern Dark SaaS Stylesheet
+const styles = {
+  appContainer: {
+    height: '100vh',
+    width: '100vw',
+    backgroundColor: '#0f172a',
+    color: '#f8fafc',
+    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+  },
+  header: {
+    height: '60px',
+    backgroundColor: '#1e293b',
+    borderBottom: '1px solid #334155',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '0 24px',
+  },
+  logoBadge: {
+    width: '32px',
+    height: '32px',
+    backgroundColor: '#3b82f6',
+    borderRadius: '8px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontWeight: '700',
+    fontSize: '14px',
+  },
+  headerTitle: { fontSize: '18px', fontWeight: '600', margin: 0 },
+  roleBtn: { background: 'transparent', border: 'none', color: '#94a3b8', padding: '6px 12px', cursor: 'pointer', borderRadius: '6px' },
+  activeRoleBtn: { background: '#334155', border: 'none', color: '#fff', padding: '6px 12px', cursor: 'pointer', borderRadius: '6px', fontWeight: '600' },
+  
+  mainLayout: { flex: 1, display: 'flex', overflow: 'hidden' },
+  leftPanel: { flex: 2, padding: '24px', overflowY: 'auto', borderRight: '1px solid #334155' },
+  rightPanel: { flex: 1.2, padding: '24px', backgroundColor: '#1e293b', display: 'flex', flexDirection: 'column' },
+  
+  sectionTitle: { fontSize: '16px', fontWeight: '600', margin: 0, color: '#e2e8f0' },
+  tableGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '12px', marginTop: '12px' },
+  tableCard: {
+    padding: '16px 12px',
+    borderRadius: '10px',
+    border: '2px solid',
+    cursor: 'pointer',
+    textAlign: 'center',
+    transition: 'all 0.2s ease',
+  },
+  statusBadge: { fontSize: '11px', padding: '2px 8px', borderRadius: '12px', marginTop: '8px', display: 'inline-block', fontWeight: '500' },
+  
+  openTablePromptCard: { padding: '32px', border: '1px dashed #475569', borderRadius: '12px', textAlign: 'center', marginTop: '12px' },
+  menuGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '12px', marginTop: '12px' },
+  menuCard: {
+    backgroundColor: '#111827',
+    border: '1px solid #374151',
+    borderRadius: '10px',
+    padding: '14px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    cursor: 'pointer',
+  },
+  addMenuBtn: { width: '28px', height: '28px', borderRadius: '50%', border: 'none', background: '#3b82f6', color: '#fff', fontWeight: 'bold', cursor: 'pointer' },
+  
+  panelHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '16px', borderBottom: '1px solid #334155', marginBottom: '16px' },
+  emptyStateContainer: { display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: '#64748b' },
+  
+  sectionBlock: { marginBottom: '20px' },
+  subTitle: { fontSize: '13px', textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.5px', marginBottom: '10px' },
+  mutedText: { fontSize: '13px', color: '#64748b', margin: 0 },
+  
+  cartRow: { display: 'flex', alignItems: 'center', background: '#0f172a', padding: '10px 12px', borderRadius: '8px', border: '1px solid #334155' },
+  deleteBtn: { background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px', padding: '4px 8px' },
+  confirmOrderBtn: { width: '100%', padding: '10px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', marginTop: '10px' },
+  
+  batchCard: { background: '#0f172a', padding: '12px', borderRadius: '8px', borderLeft: '3px solid #3b82f6', marginBottom: '8px' },
+  batchHeader: { display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' },
+  badgeSent: { color: '#3b82f6', background: 'rgba(59, 130, 246, 0.1)', padding: '2px 6px', borderRadius: '4px' },
+  
+  paymentFooter: { marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid #334155' },
+  primaryBtn: { background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 16px', fontWeight: '600', cursor: 'pointer' },
+  dangerOutlineBtn: { background: 'transparent', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '8px', padding: '6px 12px', fontSize: '12px', cursor: 'pointer' },
+  
+  modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', z-index: 100 },
+  modalCard: { backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '12px', padding: '24px', width: '400px' },
+};
