@@ -53,10 +53,11 @@ export default function App() {
   ]);
 
   const [menuList, setMenuList] = useState([
-    { id: 101, name: 'Americano', price: 22000, category: 'drink' },
-    { id: 102, name: 'Latte', price: 28000, category: 'drink' },
-    { id: 103, name: 'Mie Goreng', price: 25000, category: 'food' },
-    { id: 104, name: 'Nasi Goreng', price: 28000, category: 'food' },
+    { id: 101, name: 'Americano', price: 18900, category: 'drink' },
+    { id: 102, name: 'Latte', price: 22900, category: 'drink' },
+    { id: 103, name: 'Mie Goreng', price: 18900, category: 'food' },
+    { id: 104, name: 'Nasi Goreng', price: 24900, category: 'food' },
+    { id: 105, name: 'Matcha Latte', price: 22900, category: 'drink' },
   ]);
 
   // --- Discount Rules State (Owner Mode) ---
@@ -88,7 +89,7 @@ export default function App() {
   const [takeawayCart, setTakeawayCart] = useState([]);
   
   // List Antrean Takeaway Active Order
-  const [takeawayOrders, setTakeawayOrders] = useState([]); // [{ id, orderNo, platform, customerName, items, total, discount, isPaid, isCompleted, time }]
+  const [takeawayOrders, setTakeawayOrders] = useState([]);
   const [selectedTakeawayOrder, setSelectedTakeawayOrder] = useState(null);
   const [showTakeawayPaymentModal, setShowTakeawayPaymentModal] = useState(false);
 
@@ -176,16 +177,15 @@ export default function App() {
     }
   };
 
-  // Helper: Hitung diskon otomatis berdasarkan rule
+  // --- REVISI 1: Helper Hitung Diskon Otomatis BERLAKU KELIPATAN ---
   const calculateAutoDiscount = (recapList) => {
     let totalDiscount = 0;
     recapList.forEach(item => {
       const matchedRules = discountRules.filter(r => r.menuId === item.id && item.qty >= r.minQty);
-      if (matchedRules.length > 0) {
-        // Ambil diskon terbesar yang sesuai
-        const maxDiscount = Math.max(...matchedRules.map(r => r.discountAmount));
-        totalDiscount += maxDiscount;
-      }
+      matchedRules.forEach(r => {
+        const multiplier = Math.floor(item.qty / r.minQty);
+        totalDiscount += multiplier * r.discountAmount;
+      });
     });
     return totalDiscount;
   };
@@ -431,7 +431,6 @@ export default function App() {
               )}
             </form>
 
-            {/* List Meja */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
               {tables.map(t => (
                 <div key={t.id} style={styles.cartRow}>
@@ -536,7 +535,7 @@ export default function App() {
                 discountRules.map(r => (
                   <div key={r.id} style={styles.cartRow}>
                     <div style={{ flex: 1 }}>
-                      Beli <strong>{r.menuName}</strong> qty min <strong>{r.minQty}x</strong> 👉 Diskon Otomatis <strong>Rp {r.discountAmount.toLocaleString()}</strong>
+                      Beli <strong>{r.menuName}</strong> qty min <strong>{r.minQty}x</strong> 👉 Diskon Otomatis <strong>Rp {r.discountAmount.toLocaleString()}</strong> (Berlaku Kelipatan)
                     </div>
                     <button style={styles.deleteBtn} onClick={() => handleDeleteDiscountRule(r.id)}>Hapus</button>
                   </div>
@@ -825,9 +824,24 @@ export default function App() {
                           ))}
                         </div>
 
-                        <div style={{ borderTop: '1px solid #334155', paddingTop: '6px', fontSize: '13px', display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
-                          <span>Total:</span>
-                          <span style={{ color: '#10b981' }}>Rp {order.total.toLocaleString()}</span>
+                        {/* REVISI 2: Menampilkan Subtotal & Diskon secara transparan di Antrean Takeaway */}
+                        <div style={{ borderTop: '1px solid #334155', paddingTop: '6px', fontSize: '13px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#9ca3af', marginBottom: '2px' }}>
+                            <span>Subtotal:</span>
+                            <span>Rp {(order.subTotal || order.total + (order.discount || 0)).toLocaleString()}</span>
+                          </div>
+                          
+                          {order.discount > 0 && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#ef4444', marginBottom: '4px' }}>
+                              <span>Promo Diskon (Otomatis):</span>
+                              <span>- Rp {order.discount.toLocaleString()}</span>
+                            </div>
+                          )}
+
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '14px', marginTop: '4px' }}>
+                            <span>Total:</span>
+                            <span style={{ color: '#10b981' }}>Rp {order.total.toLocaleString()}</span>
+                          </div>
                         </div>
 
                         <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
@@ -943,6 +957,18 @@ export default function App() {
                 </div>
               ))}
             </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#9ca3af', marginBottom: '4px' }}>
+              <span>Subtotal:</span>
+              <span>Rp {(selectedTakeawayOrder.subTotal || selectedTakeawayOrder.total + (selectedTakeawayOrder.discount || 0)).toLocaleString()}</span>
+            </div>
+
+            {selectedTakeawayOrder.discount > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#ef4444', marginBottom: '8px' }}>
+                <span>Promo Diskon (Otomatis):</span>
+                <span>- Rp {selectedTakeawayOrder.discount.toLocaleString()}</span>
+              </div>
+            )}
 
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '16px', fontWeight: 'bold', color: '#10b981', marginBottom: '16px' }}>
               <span>Total Tagihan:</span>
