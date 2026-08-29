@@ -1,6 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 export default function App() {
+  // --- Global Fullscreen Fix ---
+  useEffect(() => {
+    document.body.style.margin = '0';
+    document.body.style.padding = '0';
+    document.body.style.overflow = 'hidden';
+    const root = document.getElementById('root');
+    if (root) {
+      root.style.width = '100vw';
+      root.style.height = '100vh';
+      root.style.maxWidth = 'none';
+      root.style.margin = '0';
+      root.style.padding = '0';
+    }
+  }, []);
+
   // --- Auth State ---
   const [userRole, setUserRole] = useState('cashier'); // 'cashier' | 'owner'
 
@@ -20,7 +35,7 @@ export default function App() {
     { id: 104, name: 'Nasi Goreng', price: 28000, category: 'food' },
   ]);
 
-  // Form State untuk Owner (Tambah/Edit Menu & Meja)
+  // Form State untuk Owner
   const [newTableName, setNewTableName] = useState('');
   const [menuForm, setMenuForm] = useState({ id: null, name: '', price: '', category: 'food' });
   const [isEditingMenu, setIsEditingMenu] = useState(false);
@@ -203,7 +218,7 @@ export default function App() {
 
       {/* Mode Owner: Kelola Menu & Meja */}
       {userRole === 'owner' ? (
-        <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
+        <div style={{ padding: '24px', overflowY: 'auto', flex: 1, boxSizing: 'border-box' }}>
           <h2 style={{ marginTop: 0 }}>Panel Owner - Kelola Meja & Menu</h2>
           
           {/* Form Tambah Meja */}
@@ -504,11 +519,11 @@ export default function App() {
   );
 }
 
-// Fixed Responsive Dark SaaS Stylesheet
+// Strict Fullscreen Layout Stylesheet
 const styles = {
   appContainer: {
     height: '100vh',
-    width: '100%',
+    width: '100vw',
     boxSizing: 'border-box',
     backgroundColor: '#0f172a',
     color: '#f8fafc',
@@ -516,6 +531,9 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
+    position: 'fixed',
+    top: 0,
+    left: 0,
   },
   header: {
     height: '56px',
@@ -526,6 +544,7 @@ const styles = {
     justifyContent: 'space-between',
     padding: '0 20px',
     boxSizing: 'border-box',
+    width: '100%',
   },
   logoBadge: {
     width: '32px',
