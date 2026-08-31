@@ -1110,7 +1110,7 @@ const styles = {
     borderRadius: '10px',
     padding: '12px',
     display: 'flex',
-    justify.Content: 'space-between',
+    justifyContent: 'space-between',
     alignItems: 'center',
     cursor: 'pointer',
   },
