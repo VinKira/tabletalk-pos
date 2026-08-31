@@ -85,13 +85,44 @@ export default function App() {
   const [takeawayPlatform, setTakeawayPlatform] = useState('On Site'); // 'On Site', 'GoFood', 'GrabFood', 'ShopeeFood'
   const [takeawayCustomerName, setTakeawayCustomerName] = useState('');
   const [takeawayOrderNoInput, setTakeawayOrderNoInput] = useState('');
-  const [autoTakeawayCounter, setAutoTakeawayCounter] = useState(1);
-  const [takeawayCart, setTakeawayCart] = useState([]);
   
-  // List Antrean Takeaway Active Order
-  const [takeawayOrders, setTakeawayOrders] = useState([]);
+  // Counter Nomor Order OnSite (Load dari LocalStorage agar tidak reset)
+  const [autoTakeawayCounter, setAutoTakeawayCounter] = useState(() => {
+    const saved = localStorage.getItem('pos_takeaway_counter');
+    return saved ? JSON.parse(saved) : 1;
+  });
+
+  // Draft Keranjang Takeaway yang sedang diisi (Load dari LocalStorage)
+  const [takeawayCart, setTakeawayCart] = useState(() => {
+    const saved = localStorage.getItem('pos_draft_takeaway_cart');
+    return saved ? JSON.parse(saved) : [];
+  });
+  
+  // List Antrean Takeaway Active Order (Load dari LocalStorage)
+  const [takeawayOrders, setTakeawayOrders] = useState(() => {
+    const saved = localStorage.getItem('pos_active_takeaway_orders');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const [selectedTakeawayOrder, setSelectedTakeawayOrder] = useState(null);
   const [showTakeawayPaymentModal, setShowTakeawayPaymentModal] = useState(false);
+
+  // ================= AUTO-SAVE EFFECT TO LOCALSTORAGE =================
+  // Save Counter Takeaway OnSite
+  useEffect(() => {
+    localStorage.setItem('pos_takeaway_counter', JSON.stringify(autoTakeawayCounter));
+  }, [autoTakeawayCounter]);
+
+  // Save Draft Keranjang Takeaway saat berubah
+  useEffect(() => {
+    localStorage.setItem('pos_draft_takeaway_cart', JSON.stringify(takeawayCart));
+  }, [takeawayCart]);
+
+  // Save Antrean Active Order Takeaway saat berubah
+  useEffect(() => {
+    localStorage.setItem('pos_active_takeaway_orders', JSON.stringify(takeawayOrders));
+  }, [takeawayOrders]);
+  // =====================================================================
 
   // --- 1. Manajemen Meja CRUD (Owner) ---
   const handleSaveTable = (e) => {
@@ -177,7 +208,7 @@ export default function App() {
     }
   };
 
-  // --- REVISI 1: Helper Hitung Diskon Otomatis BERLAKU KELIPATAN ---
+  // Helper Hitung Diskon Otomatis BERLAKU KELIPATAN
   const calculateAutoDiscount = (recapList) => {
     let totalDiscount = 0;
     recapList.forEach(item => {
@@ -824,7 +855,6 @@ export default function App() {
                           ))}
                         </div>
 
-                        {/* REVISI 2: Menampilkan Subtotal & Diskon secara transparan di Antrean Takeaway */}
                         <div style={{ borderTop: '1px solid #334155', paddingTop: '6px', fontSize: '13px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', color: '#9ca3af', marginBottom: '2px' }}>
                             <span>Subtotal:</span>
