@@ -43,14 +43,19 @@ export default function App() {
     setPinInput('');
   };
 
-  // --- Dynamic Tables & Menu State ---
-  const [tables, setTables] = useState([
+  // --- Dynamic Tables & Menu State (dengan LocalStorage Backup) ---
+  const defaultTables = [
     { id: 1, number: 'Meja 01', status: 'available' },
     { id: 2, number: 'Meja 02', status: 'available' },
     { id: 3, number: 'Meja 03', status: 'available' },
     { id: 4, number: 'Meja 04', status: 'available' },
     { id: 5, number: 'Meja 05', status: 'available' },
-  ]);
+  ];
+
+  const [tables, setTables] = useState(() => {
+    const saved = localStorage.getItem('pos_dinein_tables');
+    return saved ? JSON.parse(saved) : defaultTables;
+  });
 
   const [menuList, setMenuList] = useState([
     { id: 101, name: 'Americano', price: 18900, category: 'drink' },
@@ -74,31 +79,41 @@ export default function App() {
   // --- POS Mode Selection ---
   const [posMode, setPosMode] = useState('dine-in'); // 'dine-in' | 'takeaway'
 
-  // --- Dine-In State ---
+  // --- Dine-In State (dengan Auto-Save LocalStorage) ---
   const [selectedTable, setSelectedTable] = useState(null);
-  const [activeSessions, setActiveSessions] = useState({});
-  const [confirmedOrders, setConfirmedOrders] = useState({});
-  const [currentCart, setCurrentCart] = useState({});
+
+  const [activeSessions, setActiveSessions] = useState(() => {
+    const saved = localStorage.getItem('pos_dinein_active_sessions');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const [confirmedOrders, setConfirmedOrders] = useState(() => {
+    const saved = localStorage.getItem('pos_dinein_confirmed_orders');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const [currentCart, setCurrentCart] = useState(() => {
+    const saved = localStorage.getItem('pos_dinein_current_cart');
+    return saved ? JSON.parse(saved) : {};
+  });
+
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
 
   // --- Takeaway State ---
-  const [takeawayPlatform, setTakeawayPlatform] = useState('On Site'); // 'On Site', 'GoFood', 'GrabFood', 'ShopeeFood'
+  const [takeawayPlatform, setTakeawayPlatform] = useState('On Site');
   const [takeawayCustomerName, setTakeawayCustomerName] = useState('');
   const [takeawayOrderNoInput, setTakeawayOrderNoInput] = useState('');
   
-  // Counter Nomor Order OnSite (Load dari LocalStorage agar tidak reset)
   const [autoTakeawayCounter, setAutoTakeawayCounter] = useState(() => {
     const saved = localStorage.getItem('pos_takeaway_counter');
     return saved ? JSON.parse(saved) : 1;
   });
 
-  // Draft Keranjang Takeaway yang sedang diisi (Load dari LocalStorage)
   const [takeawayCart, setTakeawayCart] = useState(() => {
     const saved = localStorage.getItem('pos_draft_takeaway_cart');
     return saved ? JSON.parse(saved) : [];
   });
   
-  // List Antrean Takeaway Active Order (Load dari LocalStorage)
   const [takeawayOrders, setTakeawayOrders] = useState(() => {
     const saved = localStorage.getItem('pos_active_takeaway_orders');
     return saved ? JSON.parse(saved) : [];
@@ -107,18 +122,36 @@ export default function App() {
   const [selectedTakeawayOrder, setSelectedTakeawayOrder] = useState(null);
   const [showTakeawayPaymentModal, setShowTakeawayPaymentModal] = useState(false);
 
-  // ================= AUTO-SAVE EFFECT TO LOCALSTORAGE =================
-  // Save Counter Takeaway OnSite
+  // ================= AUTO-SAVE EFFECTS TO LOCALSTORAGE =================
+  // Save Status Meja Dine-In
+  useEffect(() => {
+    localStorage.setItem('pos_dinein_tables', JSON.stringify(tables));
+  }, [tables]);
+
+  // Save Sesi Aktif Dine-In
+  useEffect(() => {
+    localStorage.setItem('pos_dinein_active_sessions', JSON.stringify(activeSessions));
+  }, [activeSessions]);
+
+  // Save Batches Order Dapur Dine-In
+  useEffect(() => {
+    localStorage.setItem('pos_dinein_confirmed_orders', JSON.stringify(confirmedOrders));
+  }, [confirmedOrders]);
+
+  // Save Draft Cart Dine-In
+  useEffect(() => {
+    localStorage.setItem('pos_dinein_current_cart', JSON.stringify(currentCart));
+  }, [currentCart]);
+
+  // Save Takeaway Data
   useEffect(() => {
     localStorage.setItem('pos_takeaway_counter', JSON.stringify(autoTakeawayCounter));
   }, [autoTakeawayCounter]);
 
-  // Save Draft Keranjang Takeaway saat berubah
   useEffect(() => {
     localStorage.setItem('pos_draft_takeaway_cart', JSON.stringify(takeawayCart));
   }, [takeawayCart]);
 
-  // Save Antrean Active Order Takeaway saat berubah
   useEffect(() => {
     localStorage.setItem('pos_active_takeaway_orders', JSON.stringify(takeawayOrders));
   }, [takeawayOrders]);
@@ -208,7 +241,6 @@ export default function App() {
     }
   };
 
-  // Helper Hitung Diskon Otomatis BERLAKU KELIPATAN
   const calculateAutoDiscount = (recapList) => {
     let totalDiscount = 0;
     recapList.forEach(item => {
@@ -323,6 +355,7 @@ export default function App() {
 
     alert('Pembayaran Sukses! Struk Berhasil Dicetak.');
 
+    // Clear data meja dari state (akan otomatis menghapus dari LocalStorage via useEffect)
     setActiveSessions(prev => { const n = { ...prev }; delete n[tableId]; return n; });
     setConfirmedOrders(prev => { const n = { ...prev }; delete n[tableId]; return n; });
     setCurrentCart(prev => { const n = { ...prev }; delete n[tableId]; return n; });
@@ -436,7 +469,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* Mode Owner: Kelola Meja, Menu & Promo Diskon */}
+      {/* Mode Owner */}
       {userRole === 'owner' ? (
         <div style={{ padding: '24px', overflowY: 'auto', flex: 1, boxSizing: 'border-box' }}>
           <h2 style={{ marginTop: 0 }}>Panel Owner - Pengaturan Sistem</h2>
@@ -577,13 +610,12 @@ export default function App() {
 
         </div>
       ) : (
-        /* Mode Kasir (Dine-In vs Takeaway) */
+        /* Mode Kasir */
         <div style={styles.mainLayout}>
           
           {posMode === 'dine-in' ? (
             /* ================= DINE-IN MODE ================= */
             <>
-              {/* Panel Kiri: Grid Meja & Menu */}
               <div style={styles.leftPanel}>
                 <div style={{ marginBottom: '24px' }}>
                   <h3 style={styles.sectionTitle}>Status Meja</h3>
@@ -640,7 +672,6 @@ export default function App() {
                 )}
               </div>
 
-              {/* Panel Kanan: Billing & Order Summary */}
               <div style={styles.rightPanel}>
                 {!selectedTable ? (
                   <div style={styles.emptyStateContainer}>
@@ -745,11 +776,9 @@ export default function App() {
           ) : (
             /* ================= TAKEAWAY MODE ================= */
             <>
-              {/* Panel Kiri: Input Form Takeaway & Catalog Menu */}
               <div style={styles.leftPanel}>
                 <h3 style={styles.sectionTitle}>Pesan Takeaway / Online Order</h3>
                 
-                {/* Platform Selector */}
                 <div style={{ display: 'flex', gap: '8px', margin: '12px 0' }}>
                   {['On Site', 'GoFood', 'GrabFood', 'ShopeeFood'].map(plat => (
                     <button
@@ -767,7 +796,6 @@ export default function App() {
                   ))}
                 </div>
 
-                {/* Input No Order / Nama */}
                 <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
                   {takeawayPlatform === 'On Site' ? (
                     <input 
@@ -788,7 +816,6 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Menu Grid */}
                 <div style={styles.menuGrid}>
                   {menuList.map(menu => (
                     <div key={menu.id} style={styles.menuCard} onClick={() => handleAddToTakeawayCart(menu)}>
@@ -802,7 +829,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Panel Tengah: Draft Cart Takeaway */}
               <div style={{ flex: 1.2, padding: '20px', borderRight: '1px solid #334155', display: 'flex', flexDirection: 'column' }}>
                 <h3 style={styles.sectionTitle}>Draft Cart Takeaway ({takeawayPlatform})</h3>
                 <div style={{ flex: 1, overflowY: 'auto', marginTop: '12px' }}>
@@ -831,7 +857,6 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Panel Kanan: Daftar Antrean Active Takeaway Orders */}
               <div style={styles.rightPanel}>
                 <h3 style={styles.sectionTitle}>Daftar Antrean Active Takeaway ({takeawayOrders.length})</h3>
                 <div style={{ flex: 1, overflowY: 'auto', marginTop: '12px' }}>
@@ -906,7 +931,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal PIN / Password Protection */}
+      {/* Modal PIN / Password */}
       {showAuthModal && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalCard}>
@@ -1085,7 +1110,7 @@ const styles = {
     borderRadius: '10px',
     padding: '12px',
     display: 'flex',
-    justifyContent: 'space-between',
+    justify.Content: 'space-between',
     alignItems: 'center',
     cursor: 'pointer',
   },
