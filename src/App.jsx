@@ -57,16 +57,22 @@ export default function App() {
     return saved ? JSON.parse(saved) : defaultTables;
   });
 
-  const [menuList, setMenuList] = useState([
-    { id: 101, name: 'Americano', price: 18900, category: 'drink' },
-    { id: 102, name: 'Latte', price: 22900, category: 'drink' },
-    { id: 103, name: 'Mie Goreng', price: 18900, category: 'food' },
-    { id: 104, name: 'Nasi Goreng', price: 24900, category: 'food' },
-    { id: 105, name: 'Matcha Latte', price: 22900, category: 'drink' },
-  ]);
+const [menuList, setMenuList] = useState(() => {
+    const saved = localStorage.getItem('pos_menu_list');
+    return saved ? JSON.parse(saved) : [
+      { id: 101, name: 'Americano', price: 18900, category: 'drink' },
+      { id: 102, name: 'Latte', price: 22900, category: 'drink' },
+      { id: 103, name: 'Mie Goreng', price: 18900, category: 'food' },
+      { id: 104, name: 'Nasi Goreng', price: 24900, category: 'food' },
+      { id: 105, name: 'Matcha Latte', price: 22900, category: 'drink' },
+    ];
+  });
 
   // --- Discount Rules State (Owner Mode) ---
-  const [discountRules, setDiscountRules] = useState([]);
+  const [discountRules, setDiscountRules] = useState(() => {
+    const saved = localStorage.getItem('pos_discount_rules');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [discountForm, setDiscountForm] = useState({ id: null, menuId: '', minQty: 1, discountAmount: 0 });
   const [isEditingDiscount, setIsEditingDiscount] = useState(false);
 
@@ -128,6 +134,16 @@ export default function App() {
     localStorage.setItem('pos_dinein_tables', JSON.stringify(tables));
   }, [tables]);
 
+  // Save Status Menu
+  useEffect(() => {
+    localStorage.setItem('pos_menu_list', JSON.stringify(menuList));
+  }, [menuList]);
+
+  // Save Status Promo Diskon
+  useEffect(() => {
+    localStorage.setItem('pos_discount_rules', JSON.stringify(discountRules));
+  }, [discountRules]);
+  
   // Save Sesi Aktif Dine-In
   useEffect(() => {
     localStorage.setItem('pos_dinein_active_sessions', JSON.stringify(activeSessions));
