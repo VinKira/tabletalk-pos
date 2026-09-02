@@ -349,6 +349,30 @@ export default function App() {
     return { recapList, subTotal, autoDiscount, batches };
   };
 
+  // --- TAMBAHKAN FUNGSI INI ---
+  const handleCloseTableClick = () => {
+    if (!selectedTable) return;
+
+    // Jika meja tidak ada tagihan (Total Rp 0 / belum ada orderan yang dibuat)
+    if (finalTotal === 0 || batches.length === 0) {
+      const confirmClose = confirm("Tidak ada tagihan pada meja ini. Tutup dan kosongkan meja sekarang?");
+      if (confirmClose) {
+        const tableId = selectedTable.id;
+        
+        // Riset data meja langsung tanpa lewat modal bayar
+        setActiveSessions(prev => { const n = { ...prev }; delete n[tableId]; return n; });
+        setConfirmedOrders(prev => { const n = { ...prev }; delete n[tableId]; return n; });
+        setCurrentCart(prev => { const n = { ...prev }; delete n[tableId]; return n; });
+
+        setTables(prev => prev.map(t => t.id === tableId ? { ...t, status: 'available' } : t));
+        setSelectedTable(prev => ({ ...prev, status: 'available' }));
+      }
+    } else {
+      // Jika ada tagihan, buka modal pembayaran seperti biasa
+      setShowCheckoutModal(true);
+    }
+  };
+  
   const handlePaymentSuccess = () => {
     if (!selectedTable) return;
     const tableId = selectedTable.id;
@@ -762,8 +786,8 @@ export default function App() {
                         </div>
                         <button 
                           style={{ ...styles.primaryBtn, width: '100%', padding: '12px', fontSize: '14px' }}
-                          onClick={() => setShowCheckoutModal(true)}
-                          disabled={batches.length === 0}
+                          onClick={handleCloseTableClick}
+                          /* Hapus atau matikan atribut disabled agar tombol selalu bisa diklik */
                         >
                           Close Table & Payment
                         </button>
