@@ -200,17 +200,19 @@ const [menuList, setMenuList] = useState(() => {
     }
   };
 
-  // --- 2. Manajemen Menu CRUD (Owner) ---
+// --- 2. Manajemen Menu CRUD (Owner) ---
   const handleSaveMenu = (e) => {
     e.preventDefault();
     if (!menuForm.name || !menuForm.price) return alert('Nama dan Harga wajib diisi!');
 
+    const parsedPrice = Number(menuForm.price);
+
     if (isEditingMenu) {
-      setMenuList(menuList.map(item => item.id === menuForm.id ? { ...menuForm, price: Number(menuForm.price) } : item));
+      setMenuList(prev => prev.map(item => item.id === menuForm.id ? { ...menuForm, price: parsedPrice } : item));
       setIsEditingMenu(false);
     } else {
       const newId = menuList.length ? Math.max(...menuList.map(m => m.id)) + 1 : 101;
-      setMenuList([...menuList, { ...menuForm, id: newId, price: Number(menuForm.price) }]);
+      setMenuList(prev => [...prev, { ...menuForm, id: newId, price: parsedPrice }]);
     }
     setMenuForm({ id: null, name: '', price: '', category: 'food' });
   };
@@ -226,27 +228,28 @@ const [menuList, setMenuList] = useState(() => {
     }
   };
 
-  // --- 3. Manajemen Promo Diskon CRUD (Owner) ---
+// --- 3. Manajemen Promo Diskon CRUD (Owner) ---
   const handleSaveDiscountRule = (e) => {
     e.preventDefault();
     if (!discountForm.menuId) return alert('Pilih menu terlebih dahulu!');
 
-    const targetMenu = menuList.find(m => m.id === Number(discountForm.menuId));
-    if (!targetMenu) return;
+    const selectedMenuId = Number(discountForm.menuId);
+    const targetMenu = menuList.find(m => m.id === selectedMenuId);
+    if (!targetMenu) return alert('Menu tidak ditemukan!');
 
     const newRule = {
-      id: isEditingDiscount ? discountForm.id : Date.now(),
-      menuId: Number(discountForm.menuId),
+      id: isEditingDiscount && discountForm.id ? discountForm.id : Date.now(),
+      menuId: selectedMenuId,
       menuName: targetMenu.name,
-      minQty: Number(discountForm.minQty),
-      discountAmount: Number(discountForm.discountAmount)
+      minQty: Number(discountForm.minQty) || 1,
+      discountAmount: Number(discountForm.discountAmount) || 0
     };
 
     if (isEditingDiscount) {
-      setDiscountRules(discountRules.map(r => r.id === newRule.id ? newRule : r));
+      setDiscountRules(prev => prev.map(r => r.id === newRule.id ? newRule : r));
       setIsEditingDiscount(false);
     } else {
-      setDiscountRules([...discountRules, newRule]);
+      setDiscountRules(prev => [...prev, newRule]);
     }
     setDiscountForm({ id: null, menuId: '', minQty: 1, discountAmount: 0 });
   };
