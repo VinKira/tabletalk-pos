@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { supabase } from './supabaseClient';
 
 export default function App() {
   // --- Global Fullscreen Fix ---
@@ -43,7 +44,7 @@ export default function App() {
     setPinInput('');
   };
 
-  // --- Dynamic Tables & Menu State (dengan LocalStorage Backup) ---
+  // --- Dynamic Tables & Menu State ---
   const defaultTables = [
     { id: 1, number: 'Meja 01', status: 'available' },
     { id: 2, number: 'Meja 02', status: 'available' },
@@ -57,22 +58,56 @@ export default function App() {
     return saved ? JSON.parse(saved) : defaultTables;
   });
 
-const [menuList, setMenuList] = useState(() => {
-    const saved = localStorage.getItem('pos_menu_list');
-    return saved ? JSON.parse(saved) : [
-      { id: 101, name: 'Americano', price: 18900, category: 'drink' },
-      { id: 102, name: 'Latte', price: 22900, category: 'drink' },
-      { id: 103, name: 'Mie Goreng', price: 18900, category: 'food' },
-      { id: 104, name: 'Nasi Goreng', price: 24900, category: 'food' },
-      { id: 105, name: 'Matcha Latte', price: 22900, category: 'drink' },
-    ];
-  });
+  // State Menu & Promo Diskon (Disambungkan ke Supabase)
+  const [menuList, setMenuList] = useState([]);
+  const [discountRules, setDiscountRules] = useState([]);
 
-  // --- Discount Rules State (Owner Mode) ---
-  const [discountRules, setDiscountRules] = useState(() => {
-    const saved = localStorage.getItem('pos_discount_rules');
-    return saved ? JSON.parse(saved) : [];
-  });
+  // Fetch Data Awal & Realtime Subscription Supabase
+  useEffect(() => {
+    fetchMenuList();
+    fetchDiscountRules();
+
+    // Listen Perubahan Menu Realtime
+    const menuChannel = supabase
+      .channel('public:menu_list')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_list' }, () => {
+        fetchMenuList();
+      })
+      .subscribe();
+
+    // Listen Perubahan Promo Realtime
+    const discountChannel = supabase
+      .channel('public:discount_rules')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'discount_rules' }, () => {
+        fetchDiscountRules();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(menuChannel);
+      supabase.removeChannel(discountChannel);
+    };
+  }, []);
+
+  const fetchMenuList = async () => {
+    const { data, error } = await supabase.from('menu_list').select('*').order('id', { ascending: true });
+    if (!error && data) setMenuList(data);
+  };
+
+  const fetchDiscountRules = async () => {
+    const { data, error } = await supabase.from('discount_rules').select('*').order('id', { ascending: true });
+    if (!error && data) {
+      const formatted = data.map(item => ({
+        id: item.id,
+        menuId: Number(item.menu_id),
+        menuName: item.menu_name,
+        minQty: Number(item.min_qty),
+        discountAmount: Number(item.discount_amount)
+      }));
+      setDiscountRules(formatted);
+    }
+  };
+
   const [discountForm, setDiscountForm] = useState({ id: null, menuId: '', minQty: 1, discountAmount: 0 });
   const [isEditingDiscount, setIsEditingDiscount] = useState(false);
 
@@ -129,37 +164,22 @@ const [menuList, setMenuList] = useState(() => {
   const [showTakeawayPaymentModal, setShowTakeawayPaymentModal] = useState(false);
 
   // ================= AUTO-SAVE EFFECTS TO LOCALSTORAGE =================
-  // Save Status Meja Dine-In
   useEffect(() => {
     localStorage.setItem('pos_dinein_tables', JSON.stringify(tables));
   }, [tables]);
 
-  // Save Status Menu
-  useEffect(() => {
-    localStorage.setItem('pos_menu_list', JSON.stringify(menuList));
-  }, [menuList]);
-
-  // Save Status Promo Diskon
-  useEffect(() => {
-    localStorage.setItem('pos_discount_rules', JSON.stringify(discountRules));
-  }, [discountRules]);
-  
-  // Save Sesi Aktif Dine-In
   useEffect(() => {
     localStorage.setItem('pos_dinein_active_sessions', JSON.stringify(activeSessions));
   }, [activeSessions]);
 
-  // Save Batches Order Dapur Dine-In
   useEffect(() => {
     localStorage.setItem('pos_dinein_confirmed_orders', JSON.stringify(confirmedOrders));
   }, [confirmedOrders]);
 
-  // Save Draft Cart Dine-In
   useEffect(() => {
     localStorage.setItem('pos_dinein_current_cart', JSON.stringify(currentCart));
   }, [currentCart]);
 
-  // Save Takeaway Data
   useEffect(() => {
     localStorage.setItem('pos_takeaway_counter', JSON.stringify(autoTakeawayCounter));
   }, [autoTakeawayCounter]);
@@ -200,19 +220,27 @@ const [menuList, setMenuList] = useState(() => {
     }
   };
 
-// --- 2. Manajemen Menu CRUD (Owner) ---
-  const handleSaveMenu = (e) => {
+  // --- 2. Manajemen Menu CRUD (Supabase) ---
+  const handleSaveMenu = async (e) => {
     e.preventDefault();
     if (!menuForm.name || !menuForm.price) return alert('Nama dan Harga wajib diisi!');
 
     const parsedPrice = Number(menuForm.price);
 
     if (isEditingMenu) {
-      setMenuList(prev => prev.map(item => item.id === menuForm.id ? { ...menuForm, price: parsedPrice } : item));
-      setIsEditingMenu(false);
+      const { error } = await supabase
+        .from('menu_list')
+        .update({ name: menuForm.name, price: parsedPrice, category: menuForm.category })
+        .eq('id', menuForm.id);
+
+      if (error) alert('Gagal update menu: ' + error.message);
+      else setIsEditingMenu(false);
     } else {
-      const newId = menuList.length ? Math.max(...menuList.map(m => m.id)) + 1 : 101;
-      setMenuList(prev => [...prev, { ...menuForm, id: newId, price: parsedPrice }]);
+      const { error } = await supabase
+        .from('menu_list')
+        .insert([{ name: menuForm.name, price: parsedPrice, category: menuForm.category }]);
+
+      if (error) alert('Gagal tambah menu: ' + error.message);
     }
     setMenuForm({ id: null, name: '', price: '', category: 'food' });
   };
@@ -222,14 +250,15 @@ const [menuList, setMenuList] = useState(() => {
     setIsEditingMenu(true);
   };
 
-  const handleDeleteMenu = (id) => {
+  const handleDeleteMenu = async (id) => {
     if (confirm('Yakin ingin menghapus menu ini?')) {
-      setMenuList(menuList.filter(item => item.id !== id));
+      const { error } = await supabase.from('menu_list').delete().eq('id', id);
+      if (error) alert('Gagal hapus menu: ' + error.message);
     }
   };
 
-// --- 3. Manajemen Promo Diskon CRUD (Owner) ---
-  const handleSaveDiscountRule = (e) => {
+  // --- 3. Manajemen Promo Diskon CRUD (Supabase) ---
+  const handleSaveDiscountRule = async (e) => {
     e.preventDefault();
     if (!discountForm.menuId) return alert('Pilih menu terlebih dahulu!');
 
@@ -237,26 +266,28 @@ const [menuList, setMenuList] = useState(() => {
     const targetMenu = menuList.find(m => m.id === selectedMenuId);
     if (!targetMenu) return alert('Menu tidak ditemukan!');
 
-    const newRule = {
-      id: isEditingDiscount && discountForm.id ? discountForm.id : Date.now(),
-      menuId: selectedMenuId,
-      menuName: targetMenu.name,
-      minQty: Number(discountForm.minQty) || 1,
-      discountAmount: Number(discountForm.discountAmount) || 0
+    const payload = {
+      menu_id: selectedMenuId,
+      menu_name: targetMenu.name,
+      min_qty: Number(discountForm.minQty) || 1,
+      discount_amount: Number(discountForm.discountAmount) || 0
     };
 
-    if (isEditingDiscount) {
-      setDiscountRules(prev => prev.map(r => r.id === newRule.id ? newRule : r));
-      setIsEditingDiscount(false);
+    if (isEditingDiscount && discountForm.id) {
+      const { error } = await supabase.from('discount_rules').update(payload).eq('id', discountForm.id);
+      if (error) alert('Gagal update promo: ' + error.message);
+      else setIsEditingDiscount(false);
     } else {
-      setDiscountRules(prev => [...prev, newRule]);
+      const { error } = await supabase.from('discount_rules').insert([payload]);
+      if (error) alert('Gagal buat promo: ' + error.message);
     }
     setDiscountForm({ id: null, menuId: '', minQty: 1, discountAmount: 0 });
   };
 
-  const handleDeleteDiscountRule = (id) => {
+  const handleDeleteDiscountRule = async (id) => {
     if (confirm('Hapus rule promo ini?')) {
-      setDiscountRules(discountRules.filter(r => r.id !== id));
+      const { error } = await supabase.from('discount_rules').delete().eq('id', id);
+      if (error) alert('Gagal hapus promo: ' + error.message);
     }
   };
 
@@ -368,17 +399,14 @@ const [menuList, setMenuList] = useState(() => {
     return { recapList, subTotal, autoDiscount, batches };
   };
 
-  // --- TAMBAHKAN FUNGSI INI ---
   const handleCloseTableClick = () => {
     if (!selectedTable) return;
 
-    // Jika meja tidak ada tagihan (Total Rp 0 / belum ada orderan yang dibuat)
     if (finalTotal === 0 || batches.length === 0) {
       const confirmClose = confirm("Tidak ada tagihan pada meja ini. Tutup dan kosongkan meja sekarang?");
       if (confirmClose) {
         const tableId = selectedTable.id;
         
-        // Riset data meja langsung tanpa lewat modal bayar
         setActiveSessions(prev => { const n = { ...prev }; delete n[tableId]; return n; });
         setConfirmedOrders(prev => { const n = { ...prev }; delete n[tableId]; return n; });
         setCurrentCart(prev => { const n = { ...prev }; delete n[tableId]; return n; });
@@ -387,7 +415,6 @@ const [menuList, setMenuList] = useState(() => {
         setSelectedTable(prev => ({ ...prev, status: 'available' }));
       }
     } else {
-      // Jika ada tagihan, buka modal pembayaran seperti biasa
       setShowCheckoutModal(true);
     }
   };
@@ -398,7 +425,6 @@ const [menuList, setMenuList] = useState(() => {
 
     alert('Pembayaran Sukses! Struk Berhasil Dicetak.');
 
-    // Clear data meja dari state (akan otomatis menghapus dari LocalStorage via useEffect)
     setActiveSessions(prev => { const n = { ...prev }; delete n[tableId]; return n; });
     setConfirmedOrders(prev => { const n = { ...prev }; delete n[tableId]; return n; });
     setCurrentCart(prev => { const n = { ...prev }; delete n[tableId]; return n; });
@@ -586,15 +612,19 @@ const [menuList, setMenuList] = useState(() => {
             </form>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {menuList.map(item => (
-                <div key={item.id} style={styles.cartRow}>
-                  <div style={{ flex: 1 }}>
-                    <strong>{item.name}</strong> - <span style={{ color: '#34d399' }}>Rp {item.price.toLocaleString()}</span> ({item.category})
+              {menuList.length === 0 ? (
+                <p style={styles.mutedText}>Belum ada menu di database Supabase.</p>
+              ) : (
+                menuList.map(item => (
+                  <div key={item.id} style={styles.cartRow}>
+                    <div style={{ flex: 1 }}>
+                      <strong>{item.name}</strong> - <span style={{ color: '#34d399' }}>Rp {Number(item.price).toLocaleString()}</span> ({item.category})
+                    </div>
+                    <button style={{ ...styles.roleBtn, color: '#f59e0b', marginRight: '8px' }} onClick={() => handleEditMenuClick(item)}>Edit</button>
+                    <button style={styles.deleteBtn} onClick={() => handleDeleteMenu(item.id)}>Hapus</button>
                   </div>
-                  <button style={{ ...styles.roleBtn, color: '#f59e0b', marginRight: '8px' }} onClick={() => handleEditMenuClick(item)}>Edit</button>
-                  <button style={styles.deleteBtn} onClick={() => handleDeleteMenu(item.id)}>Hapus</button>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
 
@@ -609,7 +639,7 @@ const [menuList, setMenuList] = useState(() => {
               >
                 <option value="">-- Pilih Menu Trigger --</option>
                 {menuList.map(m => (
-                  <option key={m.id} value={m.id}>{m.name} (Rp {m.price.toLocaleString()})</option>
+                  <option key={m.id} value={m.id}>{m.name} (Rp {Number(m.price).toLocaleString()})</option>
                 ))}
               </select>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -704,7 +734,7 @@ const [menuList, setMenuList] = useState(() => {
                           <div key={menu.id} style={styles.menuCard} onClick={() => handleAddToCart(menu)}>
                             <div>
                               <div style={{ fontWeight: '600', fontSize: '14px' }}>{menu.name}</div>
-                              <div style={{ fontSize: '13px', color: '#9ca3af', marginTop: '4px' }}>Rp {menu.price.toLocaleString()}</div>
+                              <div style={{ fontSize: '13px', color: '#9ca3af', marginTop: '4px' }}>Rp {Number(menu.price).toLocaleString()}</div>
                             </div>
                             <button style={styles.addMenuBtn}>+</button>
                           </div>
@@ -746,7 +776,7 @@ const [menuList, setMenuList] = useState(() => {
                                 <div key={item.id} style={styles.cartRow}>
                                   <div style={{ flex: 1 }}>
                                     <div style={{ fontWeight: '500', fontSize: '14px' }}>{item.name}</div>
-                                    <small style={{ color: '#9ca3af' }}>Rp {item.price.toLocaleString()} x {item.qty}</small>
+                                    <small style={{ color: '#9ca3af' }}>Rp {Number(item.price).toLocaleString()} x {item.qty}</small>
                                   </div>
                                   <div style={{ fontWeight: '600', marginRight: '12px', fontSize: '14px' }}>
                                     Rp {(item.price * item.qty).toLocaleString()}
@@ -806,7 +836,6 @@ const [menuList, setMenuList] = useState(() => {
                         <button 
                           style={{ ...styles.primaryBtn, width: '100%', padding: '12px', fontSize: '14px' }}
                           onClick={handleCloseTableClick}
-                          /* Hapus atau matikan atribut disabled agar tombol selalu bisa diklik */
                         >
                           Close Table & Payment
                         </button>
@@ -864,7 +893,7 @@ const [menuList, setMenuList] = useState(() => {
                     <div key={menu.id} style={styles.menuCard} onClick={() => handleAddToTakeawayCart(menu)}>
                       <div>
                         <div style={{ fontWeight: '600', fontSize: '14px' }}>{menu.name}</div>
-                        <div style={{ fontSize: '13px', color: '#9ca3af', marginTop: '4px' }}>Rp {menu.price.toLocaleString()}</div>
+                        <div style={{ fontSize: '13px', color: '#9ca3af', marginTop: '4px' }}>Rp {Number(menu.price).toLocaleString()}</div>
                       </div>
                       <button style={styles.addMenuBtn}>+</button>
                     </div>
@@ -882,7 +911,7 @@ const [menuList, setMenuList] = useState(() => {
                       <div key={item.id} style={{ ...styles.cartRow, marginBottom: '8px' }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: '500', fontSize: '14px' }}>{item.name}</div>
-                          <small style={{ color: '#9ca3af' }}>Rp {item.price.toLocaleString()} x {item.qty}</small>
+                          <small style={{ color: '#9ca3af' }}>Rp {Number(item.price).toLocaleString()} x {item.qty}</small>
                         </div>
                         <div style={{ fontWeight: '600', marginRight: '12px' }}>Rp {(item.price * item.qty).toLocaleString()}</div>
                         <button style={styles.deleteBtn} onClick={() => handleRemoveFromTakeawayCart(item.id)}>✕</button>
