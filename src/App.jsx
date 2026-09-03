@@ -199,9 +199,9 @@ export default function App() {
   // =================================================================================
 
   // --- 1. Manajemen Meja CRUD (Supabase) ---
-  const handleSaveTable = async (e) => {
+const handleSaveTable = async (e) => {
     e.preventDefault();
-    if (!tableForm.number.trim()) return;
+    if (!tableForm.number.trim()) return alert('Nomor meja tidak boleh kosong!');
 
     if (isEditingTable) {
       const { error } = await supabase
@@ -209,14 +209,23 @@ export default function App() {
         .update({ table_number: tableForm.number })
         .eq('id', tableForm.id);
 
-      if (error) alert('Gagal update meja: ' + error.message);
-      else setIsEditingTable(false);
+      if (error) {
+        alert('Gagal update meja: ' + error.message);
+      } else {
+        setIsEditingTable(false);
+        fetchTables(); // Refresh data langsung
+      }
     } else {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('tables')
-        .insert([{ table_number: tableForm.number, status: 'available' }]);
+        .insert([{ table_number: tableForm.number, status: 'available' }])
+        .select();
 
-      if (error) alert('Gagal tambah meja: ' + error.message);
+      if (error) {
+        alert('Gagal tambah meja: ' + error.message);
+      } else {
+        fetchTables(); // Refresh data langsung
+      }
     }
     setTableForm({ id: null, number: '' });
   };
