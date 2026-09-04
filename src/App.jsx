@@ -55,13 +55,20 @@ export default function App() {
     fetchMenuList();
     fetchDiscountRules();
 
-    // Listen Perubahan Meja Realtime
-    const tableChannel = supabase
-      .channel('public:tables')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, () => {
-        fetchTables();
-      })
-      .subscribe();
+// Listen Perubahan Meja Realtime
+  const tableChannel = supabase
+    .channel('public:tables')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, () => {
+      fetchTables(); // Panggil fetchTables setiap kali ada INSERT/UPDATE/DELETE
+    })
+    .subscribe();
+
+  // (listener menu & discount tetap sama...)
+  
+  return () => {
+    supabase.removeChannel(tableChannel);
+  };
+}, []);
 
     // Listen Perubahan Menu Realtime
     const menuChannel = supabase
@@ -191,41 +198,53 @@ export default function App() {
   }, [takeawayOrders]);
   // =====================================================================
 
-  // --- 1. Manajemen Meja CRUD (Supabase Realtime) ---
-  const handleSaveTable = async (e) => {
-    e.preventDefault();
-    if (!tableForm.number.trim()) return;
+// --- 1. Manajemen Meja CRUD ---
+const handleSaveTable = async (e) => {
+  e.preventDefault();
+  if (!tableForm.number.trim()) return;
 
-    if (isEditingTable) {
-      const { error } = await supabase
-        .from('tables')
-        .update({ number: tableForm.number })
-        .eq('id', tableForm.id);
+  if (isEditingTable) {
+    const { error } = await supabase
+      .from('tables')
+      .update({ number: tableForm.number })
+      .eq('id', tableForm.id);
 
-      if (error) alert('Gagal update meja: ' + error.message);
-      else setIsEditingTable(false);
+    if (error) {
+      alert('Gagal update meja: ' + error.message);
     } else {
-      const { error } = await supabase
-        .from('tables')
-        .insert([{ number: tableForm.number, status: 'available' }]);
-
-      if (error) alert('Gagal tambah meja: ' + error.message);
+      setIsEditingTable(false);
+      fetchTables(); // Direct UI update
     }
-    setTableForm({ id: null, number: '' });
-  };
+  } else {
+    const { error } = await supabase
+      .from('tables')
+      .insert([{ number: tableForm.number, status: 'available' }]);
+
+    if (error) {
+      alert('Gagal tambah meja: ' + error.message);
+    } else {
+      fetchTables(); // Direct UI update
+    }
+  }
+  setTableForm({ id: null, number: '' });
+};
 
   const handleEditTableClick = (t) => {
     setTableForm(t);
     setIsEditingTable(true);
   };
 
-  const handleDeleteTable = async (id) => {
-    if (confirm('Yakin ingin menghapus meja ini?')) {
-      const { error } = await supabase.from('tables').delete().eq('id', id);
-      if (error) alert('Gagal hapus meja: ' + error.message);
-      else if (selectedTable?.id === id) setSelectedTable(null);
+const handleDeleteTable = async (id) => {
+  if (confirm('Yakin ingin menghapus meja ini?')) {
+    const { error } = await supabase.from('tables').delete().eq('id', id);
+    if (error) {
+      alert('Gagal hapus meja: ' + error.message);
+    } else {
+      if (selectedTable?.id === id) setSelectedTable(null);
+      fetchTables(); // Direct UI update
     }
-  };
+  }
+};
 
   // --- 2. Manajemen Menu CRUD (Supabase) ---
   const handleSaveMenu = async (e) => {
