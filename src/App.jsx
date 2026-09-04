@@ -652,7 +652,7 @@ const handleCancelOpenTable = async () => {
             </form>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
-              {tables?map(t => (
+              {tables.map(t => (
                 <div key={t.id} style={styles.cartRow}>
                   <div style={{ flex: 1 }}><strong>{t.number}</strong></div>
                   <button style={{ ...styles.roleBtn, color: '#f59e0b', marginRight: '4px' }} onClick={() => handleEditTableClick(t)}>Edit</button>
@@ -780,7 +780,7 @@ const handleCancelOpenTable = async () => {
                 <div style={{ marginBottom: '24px' }}>
                   <h3 style={styles.sectionTitle}>Status Meja</h3>
                   <div style={styles.tableGrid}>
-                    {tables?map(t => {
+                    {tables.map(t => {
                       const isSelected = selectedTable?.id === t.id;
                       const isOccupied = t.status === 'occupied';
                       return (
