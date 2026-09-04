@@ -96,20 +96,25 @@ export default function App() {
     };
   }, []);
 
-  const fetchTables = async () => {
-    const { data, error } = await supabase
-      .from('tables')
-      .select('*')
-      .order('id', { ascending: true });
-    if (!error && data) {
-      const formatted = data.map(item => ({
-        id: item.id,
-        number: item.table_number,
-        status: item.status
-      }));
-      setTables(formatted);
-    }
-  };
+const fetchTables = async () => {
+  const { data, error } = await supabase.from('tables').select('*');
+  if (error) {
+    console.error('Error fetch tables:', error);
+    setTables([]); // Mencegah bernilai undefined
+    return;
+  }
+  
+  if (data) {
+    const formatted = data.map(item => ({
+      id: item.id,
+      number: item.table_number,
+      status: item.status
+    }));
+    setTables(formatted);
+  } else {
+    setTables([]); // Jika data null/kosong
+  }
+};
   
   const fetchMenuList = async () => {
     const { data, error } = await supabase.from('menu_list').select('*').order('id', { ascending: true });
@@ -647,7 +652,7 @@ const handleCancelOpenTable = async () => {
             </form>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
-              {tables.map(t => (
+              {tables?map(t => (
                 <div key={t.id} style={styles.cartRow}>
                   <div style={{ flex: 1 }}><strong>{t.number}</strong></div>
                   <button style={{ ...styles.roleBtn, color: '#f59e0b', marginRight: '4px' }} onClick={() => handleEditTableClick(t)}>Edit</button>
@@ -775,7 +780,7 @@ const handleCancelOpenTable = async () => {
                 <div style={{ marginBottom: '24px' }}>
                   <h3 style={styles.sectionTitle}>Status Meja</h3>
                   <div style={styles.tableGrid}>
-                    {tables.map(t => {
+                    {tables?map(t => {
                       const isSelected = selectedTable?.id === t.id;
                       const isOccupied = t.status === 'occupied';
                       return (
