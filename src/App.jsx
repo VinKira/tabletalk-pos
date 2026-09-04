@@ -64,9 +64,18 @@ export default function App() {
 
   // Fetch Data Awal & Realtime Subscription Supabase
   useEffect(() => {
+    fetchTables();
     fetchMenuList();
     fetchDiscountRules();
 
+    // Listen Perubahan Meja Realtime
+    const tablesChannel = supabase
+      .channel('public:tables')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, () => {
+        fetchTables();
+      })
+      .subscribe();
+    
     // Listen Perubahan Menu Realtime
     const menuChannel = supabase
       .channel('public:menu_list')
@@ -84,11 +93,27 @@ export default function App() {
       .subscribe();
 
     return () => {
+      supabase.removeChannel(tablesChannel);
       supabase.removeChannel(menuChannel);
       supabase.removeChannel(discountChannel);
     };
   }, []);
 
+  const fetchTables = async () => {
+    const { data, error } = await supabase
+      .from('tables')
+      .select('*')
+      .order('id', { ascending: true });
+    if (!error && data) {
+      const formatted = data.map(item => ({
+        id: item.id,
+        number: item.table_number,
+        status: item.status
+      }));
+      setTables(formatted);
+    }
+  };
+  
   const fetchMenuList = async () => {
     const { data, error } = await supabase.from('menu_list').select('*').order('id', { ascending: true });
     if (!error && data) setMenuList(data);
@@ -194,16 +219,24 @@ export default function App() {
   // =====================================================================
 
   // --- 1. Manajemen Meja CRUD (Owner) ---
-  const handleSaveTable = (e) => {
+const handleSaveTable = async (e) => {
     e.preventDefault();
     if (!tableForm.number.trim()) return;
 
     if (isEditingTable) {
-      setTables(tables.map(t => t.id === tableForm.id ? { ...t, number: tableForm.number } : t));
-      setIsEditingTable(false);
+      const { error } = await supabase
+        .from('tables')
+        .update({ table_number: tableForm.number })
+        .eq('id', tableForm.id);
+
+      if (error) alert('Gagal update meja: ' + error.message);
+      else setIsEditingTable(false);
     } else {
-      const newId = tables.length ? Math.max(...tables.map(t => t.id)) + 1 : 1;
-      setTables([...tables, { id: newId, number: tableForm.number, status: 'available' }]);
+      const { error } = await supabase
+        .from('tables')
+        .insert([{ table_number: tableForm.number, status: 'available' }]);
+
+      if (error) alert('Gagal tambah meja: ' + error.message);
     }
     setTableForm({ id: null, number: '' });
   };
@@ -213,10 +246,11 @@ export default function App() {
     setIsEditingTable(true);
   };
 
-  const handleDeleteTable = (id) => {
+const handleDeleteTable = async (id) => {
     if (confirm('Yakin ingin menghapus meja ini?')) {
-      setTables(tables.filter(t => t.id !== id));
-      if (selectedTable?.id === id) setSelectedTable(null);
+      const { error } = await supabase.from('tables').delete().eq('id', id);
+      if (error) alert('Gagal hapus meja: ' + error.message);
+      else if (selectedTable?.id === id) setSelectedTable(null);
     }
   };
 
@@ -308,11 +342,22 @@ export default function App() {
     setSelectedTable(table);
   };
 
-  const handleOpenTable = () => {
+ const handleOpenTable = async () => {
     if (!selectedTable) return;
     const tableId = selectedTable.id;
     const newSessionId = crypto.randomUUID();
 
+// 1. Update ke Supabase terlebih dahulu
+    const { error } = await supabase
+      .from('tables')
+      .update({ status: 'occupied' })
+      .eq('id', tableId);
+
+    if (error) {
+      alert('Gagal membuka meja: ' + error.message);
+      return;
+    }
+   
     setActiveSessions(prev => ({ ...prev, [tableId]: newSessionId }));
     setConfirmedOrders(prev => ({ ...prev, [tableId]: [] }));
     setCurrentCart(prev => ({ ...prev, [tableId]: [] }));
@@ -321,10 +366,21 @@ export default function App() {
     setSelectedTable(prev => ({ ...prev, status: 'occupied' }));
   };
 
-  const handleCancelOpenTable = () => {
+const handleCancelOpenTable = async () => {
     if (!selectedTable) return;
     const tableId = selectedTable.id;
 
+// 1. Update ke Supabase terlebih dahulu
+    const { error } = await supabase
+      .from('tables')
+      .update({ status: 'available' })
+      .eq('id', tableId);
+
+    if (error) {
+      alert('Gagal membatalkan meja: ' + error.message);
+      return;
+    }
+  
     setActiveSessions(prev => { const n = { ...prev }; delete n[tableId]; return n; });
     setConfirmedOrders(prev => { const n = { ...prev }; delete n[tableId]; return n; });
     setCurrentCart(prev => { const n = { ...prev }; delete n[tableId]; return n; });
@@ -419,10 +475,21 @@ export default function App() {
     }
   };
   
-  const handlePaymentSuccess = () => {
+ const handlePaymentSuccess = async () => {
     if (!selectedTable) return;
     const tableId = selectedTable.id;
 
+// 1. Update status meja jadi 'available' di Supabase
+    const { error } = await supabase
+      .from('tables')
+      .update({ status: 'available' })
+      .eq('id', tableId);
+
+    if (error) {
+      alert('Gagal memperbarui status meja: ' + error.message);
+      return;
+    }
+   
     alert('Pembayaran Sukses! Struk Berhasil Dicetak.');
 
     setActiveSessions(prev => { const n = { ...prev }; delete n[tableId]; return n; });
