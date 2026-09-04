@@ -219,40 +219,66 @@ export default function App() {
   // =====================================================================
 
   // --- 1. Manajemen Meja CRUD (Owner) ---
+// 1. Perbaikan Handler Tambah / Edit Meja
 const handleSaveTable = async (e) => {
-    e.preventDefault();
-    if (!tableForm.number.trim()) return;
+  e.preventDefault();
+  if (!tableForm.number) return;
 
-    if (isEditingTable) {
-      const { error } = await supabase
-        .from('tables')
-        .update({ table_number: tableForm.number })
-        .eq('id', tableForm.id);
+  if (editingTable) {
+    // Update Meja
+    const { error } = await supabase
+      .from('tables')
+      .update({ table_number: tableForm.number })
+      .eq('id', editingTable.id);
 
-      if (error) alert('Gagal update meja: ' + error.message);
-      else setIsEditingTable(false);
-    } else {
-      const { error } = await supabase
-        .from('tables')
-        .insert([{ table_number: tableForm.number, status: 'available' }]);
-
-      if (error) alert('Gagal tambah meja: ' + error.message);
+    if (error) {
+      alert('Gagal memperbarui meja: ' + error.message);
+      return;
     }
-    setTableForm({ id: null, number: '' });
-  };
+  } else {
+    // Tambah Meja Baru
+    const { error } = await supabase
+      .from('tables')
+      .insert([{ table_number: tableForm.number, status: 'available' }]);
 
-  const handleEditTableClick = (t) => {
-    setTableForm(t);
-    setIsEditingTable(true);
-  };
+    if (error) {
+      alert('Gagal menambah meja: ' + error.message);
+      return;
+    }
+  }
 
+  // Reset form & sinkronkan ulang state UI
+  setTableForm({ id: null, number: '' });
+  setEditingTable(null);
+  setIsTableModalOpen(false);
+  await fetchTables(); // Panggil ulang data agar UI langsung update
+};
+
+// 2. Perbaikan Handler Edit Click
+const handleEditTableClick = (t) => {
+  setEditingTable(t);
+  // Pastikan properti table_number terpetakan ke 'number'
+  setTableForm({ id: t.id, number: t.table_number || t.number || '' });
+  setIsTableModalOpen(true);
+};
+
+// 3. Perbaikan Handler Hapus Meja
 const handleDeleteTable = async (id) => {
-    if (confirm('Yakin ingin menghapus meja ini?')) {
-      const { error } = await supabase.from('tables').delete().eq('id', id);
-      if (error) alert('Gagal hapus meja: ' + error.message);
-      else if (selectedTable?.id === id) setSelectedTable(null);
-    }
-  };
+  if (!confirm('Yakin ingin menghapus meja ini?')) return;
+
+  const { error } = await supabase
+    .from('tables')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    alert('Gagal menghapus meja: ' + error.message);
+    return;
+  }
+
+  // Update state lokal secara presisi tanpa perlu fetch ulang
+  setTables((prevTables) => prevTables.filter((t) => t.id !== id));
+};
 
   // --- 2. Manajemen Menu CRUD (Supabase) ---
   const handleSaveMenu = async (e) => {
