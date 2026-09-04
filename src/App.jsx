@@ -44,24 +44,28 @@ export default function App() {
     setPinInput('');
   };
 
-  // State Meja, Menu, & Promo (Tersambung ke Supabase)
-  const [tables, setTables] = useState([]);
+  // --- Dynamic Tables & Menu State ---
+  const defaultTables = [
+    { id: 1, number: 'Meja 01', status: 'available' },
+    { id: 2, number: 'Meja 02', status: 'available' },
+    { id: 3, number: 'Meja 03', status: 'available' },
+    { id: 4, number: 'Meja 04', status: 'available' },
+    { id: 5, number: 'Meja 05', status: 'available' },
+  ];
+
+  const [tables, setTables] = useState(() => {
+    const saved = localStorage.getItem('pos_dinein_tables');
+    return saved ? JSON.parse(saved) : defaultTables;
+  });
+
+  // State Menu & Promo Diskon (Disambungkan ke Supabase)
   const [menuList, setMenuList] = useState([]);
   const [discountRules, setDiscountRules] = useState([]);
 
   // Fetch Data Awal & Realtime Subscription Supabase
   useEffect(() => {
-    fetchTables();
     fetchMenuList();
     fetchDiscountRules();
-
-    // Listen Perubahan Meja Realtime
-    const tableChannel = supabase
-      .channel('public:tables')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, () => {
-        fetchTables();
-      })
-      .subscribe();
 
     // Listen Perubahan Menu Realtime
     const menuChannel = supabase
@@ -80,23 +84,10 @@ export default function App() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(tableChannel);
       supabase.removeChannel(menuChannel);
       supabase.removeChannel(discountChannel);
     };
   }, []);
-
-  const fetchTables = async () => {
-    const { data, error } = await supabase.from('tables').select('*').order('id', { ascending: true });
-    if (!error && data) {
-      const formatted = data.map(t => ({
-        id: t.id,
-        number: t.table_number,
-        status: t.status || 'available'
-      }));
-      setTables(formatted);
-    }
-  };
 
   const fetchMenuList = async () => {
     const { data, error } = await supabase.from('menu_list').select('*').order('id', { ascending: true });
@@ -129,7 +120,7 @@ export default function App() {
   // --- POS Mode Selection ---
   const [posMode, setPosMode] = useState('dine-in'); // 'dine-in' | 'takeaway'
 
-  // --- Dine-In State ---
+  // --- Dine-In State (dengan Auto-Save LocalStorage) ---
   const [selectedTable, setSelectedTable] = useState(null);
 
   const [activeSessions, setActiveSessions] = useState(() => {
@@ -172,7 +163,11 @@ export default function App() {
   const [selectedTakeawayOrder, setSelectedTakeawayOrder] = useState(null);
   const [showTakeawayPaymentModal, setShowTakeawayPaymentModal] = useState(false);
 
-  // ================= AUTO-SAVE DRAFT TRANSACTIONS TO LOCALSTORAGE =================
+  // ================= AUTO-SAVE EFFECTS TO LOCALSTORAGE =================
+  useEffect(() => {
+    localStorage.setItem('pos_dinein_tables', JSON.stringify(tables));
+  }, [tables]);
+
   useEffect(() => {
     localStorage.setItem('pos_dinein_active_sessions', JSON.stringify(activeSessions));
   }, [activeSessions]);
@@ -196,50 +191,32 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('pos_active_takeaway_orders', JSON.stringify(takeawayOrders));
   }, [takeawayOrders]);
-  // =================================================================================
+  // =====================================================================
 
-  // --- 1. Manajemen Meja CRUD (Supabase) ---
-const handleSaveTable = async (e) => {
+  // --- 1. Manajemen Meja CRUD (Owner) ---
+  const handleSaveTable = (e) => {
     e.preventDefault();
-    if (!tableForm.number.trim()) return alert('Nomor meja tidak boleh kosong!');
+    if (!tableForm.number.trim()) return;
 
     if (isEditingTable) {
-      const { error } = await supabase
-        .from('tables')
-        .update({ table_number: tableForm.number })
-        .eq('id', tableForm.id);
-
-      if (error) {
-        alert('Gagal update meja: ' + error.message);
-      } else {
-        setIsEditingTable(false);
-        fetchTables(); // Refresh data langsung
-      }
+      setTables(tables.map(t => t.id === tableForm.id ? { ...t, number: tableForm.number } : t));
+      setIsEditingTable(false);
     } else {
-      const { data, error } = await supabase
-        .from('tables')
-        .insert([{ table_number: tableForm.number, status: 'available' }])
-        .select();
-
-      if (error) {
-        alert('Gagal tambah meja: ' + error.message);
-      } else {
-        fetchTables(); // Refresh data langsung
-      }
+      const newId = tables.length ? Math.max(...tables.map(t => t.id)) + 1 : 1;
+      setTables([...tables, { id: newId, number: tableForm.number, status: 'available' }]);
     }
     setTableForm({ id: null, number: '' });
   };
 
   const handleEditTableClick = (t) => {
-    setTableForm({ id: t.id, number: t.number });
+    setTableForm(t);
     setIsEditingTable(true);
   };
 
-  const handleDeleteTable = async (id) => {
+  const handleDeleteTable = (id) => {
     if (confirm('Yakin ingin menghapus meja ini?')) {
-      const { error } = await supabase.from('tables').delete().eq('id', id);
-      if (error) alert('Gagal hapus meja: ' + error.message);
-      else if (selectedTable?.id === id) setSelectedTable(null);
+      setTables(tables.filter(t => t.id !== id));
+      if (selectedTable?.id === id) setSelectedTable(null);
     }
   };
 
@@ -331,7 +308,7 @@ const handleSaveTable = async (e) => {
     setSelectedTable(table);
   };
 
-  const handleOpenTable = async () => {
+  const handleOpenTable = () => {
     if (!selectedTable) return;
     const tableId = selectedTable.id;
     const newSessionId = crypto.randomUUID();
@@ -340,11 +317,11 @@ const handleSaveTable = async (e) => {
     setConfirmedOrders(prev => ({ ...prev, [tableId]: [] }));
     setCurrentCart(prev => ({ ...prev, [tableId]: [] }));
 
-    await supabase.from('tables').update({ status: 'occupied' }).eq('id', tableId);
+    setTables(prev => prev.map(t => t.id === tableId ? { ...t, status: 'occupied' } : t));
     setSelectedTable(prev => ({ ...prev, status: 'occupied' }));
   };
 
-  const handleCancelOpenTable = async () => {
+  const handleCancelOpenTable = () => {
     if (!selectedTable) return;
     const tableId = selectedTable.id;
 
@@ -352,7 +329,7 @@ const handleSaveTable = async (e) => {
     setConfirmedOrders(prev => { const n = { ...prev }; delete n[tableId]; return n; });
     setCurrentCart(prev => { const n = { ...prev }; delete n[tableId]; return n; });
 
-    await supabase.from('tables').update({ status: 'available' }).eq('id', tableId);
+    setTables(prev => prev.map(t => t.id === tableId ? { ...t, status: 'available' } : t));
     setSelectedTable(prev => ({ ...prev, status: 'available' }));
   };
 
@@ -422,7 +399,7 @@ const handleSaveTable = async (e) => {
     return { recapList, subTotal, autoDiscount, batches };
   };
 
-  const handleCloseTableClick = async () => {
+  const handleCloseTableClick = () => {
     if (!selectedTable) return;
 
     if (finalTotal === 0 || batches.length === 0) {
@@ -434,7 +411,7 @@ const handleSaveTable = async (e) => {
         setConfirmedOrders(prev => { const n = { ...prev }; delete n[tableId]; return n; });
         setCurrentCart(prev => { const n = { ...prev }; delete n[tableId]; return n; });
 
-        await supabase.from('tables').update({ status: 'available' }).eq('id', tableId);
+        setTables(prev => prev.map(t => t.id === tableId ? { ...t, status: 'available' } : t));
         setSelectedTable(prev => ({ ...prev, status: 'available' }));
       }
     } else {
@@ -442,7 +419,7 @@ const handleSaveTable = async (e) => {
     }
   };
   
-  const handlePaymentSuccess = async () => {
+  const handlePaymentSuccess = () => {
     if (!selectedTable) return;
     const tableId = selectedTable.id;
 
@@ -452,7 +429,7 @@ const handleSaveTable = async (e) => {
     setConfirmedOrders(prev => { const n = { ...prev }; delete n[tableId]; return n; });
     setCurrentCart(prev => { const n = { ...prev }; delete n[tableId]; return n; });
 
-    await supabase.from('tables').update({ status: 'available' }).eq('id', tableId);
+    setTables(prev => prev.map(t => t.id === tableId ? { ...t, status: 'available' } : t));
     setSelectedTable(prev => ({ ...prev, status: 'available' }));
     setShowCheckoutModal(false);
   };
@@ -588,17 +565,13 @@ const handleSaveTable = async (e) => {
             </form>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
-              {tables.length === 0 ? (
-                <p style={styles.mutedText}>Belum ada meja di database.</p>
-              ) : (
-                tables.map(t => (
-                  <div key={t.id} style={styles.cartRow}>
-                    <div style={{ flex: 1 }}><strong>{t.number}</strong></div>
-                    <button style={{ ...styles.roleBtn, color: '#f59e0b', marginRight: '4px' }} onClick={() => handleEditTableClick(t)}>Edit</button>
-                    <button style={styles.deleteBtn} onClick={() => handleDeleteTable(t.id)}>Hapus</button>
-                  </div>
-                ))
-              )}
+              {tables.map(t => (
+                <div key={t.id} style={styles.cartRow}>
+                  <div style={{ flex: 1 }}><strong>{t.number}</strong></div>
+                  <button style={{ ...styles.roleBtn, color: '#f59e0b', marginRight: '4px' }} onClick={() => handleEditTableClick(t)}>Edit</button>
+                  <button style={styles.deleteBtn} onClick={() => handleDeleteTable(t.id)}>Hapus</button>
+                </div>
+              ))}
             </div>
           </div>
 
