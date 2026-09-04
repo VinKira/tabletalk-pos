@@ -64,18 +64,9 @@ export default function App() {
 
   // Fetch Data Awal & Realtime Subscription Supabase
   useEffect(() => {
-    fetchTables();
     fetchMenuList();
     fetchDiscountRules();
 
-    // Listen Perubahan Meja Realtime
-    const tablesChannel = supabase
-      .channel('public:tables')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, () => {
-        fetchTables();
-      })
-      .subscribe();
-    
     // Listen Perubahan Menu Realtime
     const menuChannel = supabase
       .channel('public:menu_list')
@@ -93,27 +84,11 @@ export default function App() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(tablesChannel);
       supabase.removeChannel(menuChannel);
       supabase.removeChannel(discountChannel);
     };
   }, []);
 
-  const fetchTables = async () => {
-    const { data, error } = await supabase
-      .from('tables')
-      .select('*')
-      .order('id', { ascending: true });
-    if (!error && data) {
-      const formatted = data.map(item => ({
-        id: item.id,
-        number: item.table_number,
-        status: item.status
-      }));
-      setTables(formatted);
-    }
-  };
-  
   const fetchMenuList = async () => {
     const { data, error } = await supabase.from('menu_list').select('*').order('id', { ascending: true });
     if (!error && data) setMenuList(data);
@@ -218,81 +193,32 @@ export default function App() {
   }, [takeawayOrders]);
   // =====================================================================
 
-// --- 1. Manajemen Meja CRUD (Owner) ---
+  // --- 1. Manajemen Meja CRUD (Owner) ---
+  const handleSaveTable = (e) => {
+    e.preventDefault();
+    if (!tableForm.number.trim()) return;
 
-// 1. Perbaikan Handler Tambah / Edit Meja
-const handleSaveTable = async (e) => {
-  e.preventDefault();
-  
-  // Ambil nilai nomor meja (antisipasi jika properti bernama 'number' atau 'table_number')
-  const valNumber = tableForm.number || tableForm.table_number;
-
-  // Jika kosong, beri peringatan (jangan return diam-diam)
-  if (!valNumber || String(valNumber).trim() === '') {
-    alert('Nomor meja tidak boleh kosong!');
-    return;
-  }
-
-  if (editingTable) {
-    // Update Meja
-    const { error } = await supabase
-      .from('tables')
-      .update({ table_number: valNumber })
-      .eq('id', editingTable.id);
-
-    if (error) {
-      alert('Gagal memperbarui meja: ' + error.message);
-      return;
+    if (isEditingTable) {
+      setTables(tables.map(t => t.id === tableForm.id ? { ...t, number: tableForm.number } : t));
+      setIsEditingTable(false);
+    } else {
+      const newId = tables.length ? Math.max(...tables.map(t => t.id)) + 1 : 1;
+      setTables([...tables, { id: newId, number: tableForm.number, status: 'available' }]);
     }
-  } else {
-    // Tambah Meja Baru
-    const { error } = await supabase
-      .from('tables')
-      .insert([{ table_number: valNumber, status: 'available' }]);
+    setTableForm({ id: null, number: '' });
+  };
 
-    if (error) {
-      alert('Gagal menambah meja: ' + error.message);
-      return;
+  const handleEditTableClick = (t) => {
+    setTableForm(t);
+    setIsEditingTable(true);
+  };
+
+  const handleDeleteTable = (id) => {
+    if (confirm('Yakin ingin menghapus meja ini?')) {
+      setTables(tables.filter(t => t.id !== id));
+      if (selectedTable?.id === id) setSelectedTable(null);
     }
-  }
-
-  // Reset form & sinkronkan ulang state UI
-  setTableForm({ id: null, number: '', table_number: '' });
-  setEditingTable(null);
-  setIsTableModalOpen(false);
-  await fetchTables(); // Panggil ulang data agar UI langsung update[cite: 3]
-};
-
-// 2. Perbaikan Handler Edit Click
-const handleEditTableClick = (t) => {
-  setEditingTable(t);
-  const num = t.table_number || t.number || '';
-  // Set kedua properti agar aman digunakan di input modal manapun
-  setTableForm({ id: t.id, number: num, table_number: num });
-  setIsTableModalOpen(true);
-};
-
-// 3. Perbaikan Handler Hapus Meja
-const handleDeleteTable = async (id) => {
-  if (!confirm('Yakin ingin menghapus meja ini?')) return;
-
-  const { error } = await supabase
-    .from('tables')
-    .delete()
-    .eq('id', id);
-
-  if (error) {
-    alert('Gagal menghapus meja: ' + error.message);
-    return;
-  }
-
-  // Update state lokal secara efisien
-  setTables((prevTables) => prevTables.filter((t) => t.id !== id));
-};
-
-  // Update state lokal secara presisi tanpa perlu fetch ulang
-  setTables((prevTables) => prevTables.filter((t) => t.id !== id));
-};
+  };
 
   // --- 2. Manajemen Menu CRUD (Supabase) ---
   const handleSaveMenu = async (e) => {
@@ -382,22 +308,11 @@ const handleDeleteTable = async (id) => {
     setSelectedTable(table);
   };
 
- const handleOpenTable = async () => {
+  const handleOpenTable = () => {
     if (!selectedTable) return;
     const tableId = selectedTable.id;
     const newSessionId = crypto.randomUUID();
 
-// 1. Update ke Supabase terlebih dahulu
-    const { error } = await supabase
-      .from('tables')
-      .update({ status: 'occupied' })
-      .eq('id', tableId);
-
-    if (error) {
-      alert('Gagal membuka meja: ' + error.message);
-      return;
-    }
-   
     setActiveSessions(prev => ({ ...prev, [tableId]: newSessionId }));
     setConfirmedOrders(prev => ({ ...prev, [tableId]: [] }));
     setCurrentCart(prev => ({ ...prev, [tableId]: [] }));
@@ -406,21 +321,10 @@ const handleDeleteTable = async (id) => {
     setSelectedTable(prev => ({ ...prev, status: 'occupied' }));
   };
 
-const handleCancelOpenTable = async () => {
+  const handleCancelOpenTable = () => {
     if (!selectedTable) return;
     const tableId = selectedTable.id;
 
-// 1. Update ke Supabase terlebih dahulu
-    const { error } = await supabase
-      .from('tables')
-      .update({ status: 'available' })
-      .eq('id', tableId);
-
-    if (error) {
-      alert('Gagal membatalkan meja: ' + error.message);
-      return;
-    }
-  
     setActiveSessions(prev => { const n = { ...prev }; delete n[tableId]; return n; });
     setConfirmedOrders(prev => { const n = { ...prev }; delete n[tableId]; return n; });
     setCurrentCart(prev => { const n = { ...prev }; delete n[tableId]; return n; });
@@ -515,21 +419,10 @@ const handleCancelOpenTable = async () => {
     }
   };
   
- const handlePaymentSuccess = async () => {
+  const handlePaymentSuccess = () => {
     if (!selectedTable) return;
     const tableId = selectedTable.id;
 
-// 1. Update status meja jadi 'available' di Supabase
-    const { error } = await supabase
-      .from('tables')
-      .update({ status: 'available' })
-      .eq('id', tableId);
-
-    if (error) {
-      alert('Gagal memperbarui status meja: ' + error.message);
-      return;
-    }
-   
     alert('Pembayaran Sukses! Struk Berhasil Dicetak.');
 
     setActiveSessions(prev => { const n = { ...prev }; delete n[tableId]; return n; });
