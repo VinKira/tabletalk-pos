@@ -218,17 +218,26 @@ export default function App() {
   }, [takeawayOrders]);
   // =====================================================================
 
-  // --- 1. Manajemen Meja CRUD (Owner) ---
+// --- 1. Manajemen Meja CRUD (Owner) ---
+
 // 1. Perbaikan Handler Tambah / Edit Meja
 const handleSaveTable = async (e) => {
   e.preventDefault();
-  if (!tableForm.number) return;
+  
+  // Ambil nilai nomor meja (antisipasi jika properti bernama 'number' atau 'table_number')
+  const valNumber = tableForm.number || tableForm.table_number;
+
+  // Jika kosong, beri peringatan (jangan return diam-diam)
+  if (!valNumber || String(valNumber).trim() === '') {
+    alert('Nomor meja tidak boleh kosong!');
+    return;
+  }
 
   if (editingTable) {
     // Update Meja
     const { error } = await supabase
       .from('tables')
-      .update({ table_number: tableForm.number })
+      .update({ table_number: valNumber })
       .eq('id', editingTable.id);
 
     if (error) {
@@ -239,7 +248,7 @@ const handleSaveTable = async (e) => {
     // Tambah Meja Baru
     const { error } = await supabase
       .from('tables')
-      .insert([{ table_number: tableForm.number, status: 'available' }]);
+      .insert([{ table_number: valNumber, status: 'available' }]);
 
     if (error) {
       alert('Gagal menambah meja: ' + error.message);
@@ -248,17 +257,18 @@ const handleSaveTable = async (e) => {
   }
 
   // Reset form & sinkronkan ulang state UI
-  setTableForm({ id: null, number: '' });
+  setTableForm({ id: null, number: '', table_number: '' });
   setEditingTable(null);
   setIsTableModalOpen(false);
-  await fetchTables(); // Panggil ulang data agar UI langsung update
+  await fetchTables(); // Panggil ulang data agar UI langsung update[cite: 3]
 };
 
 // 2. Perbaikan Handler Edit Click
 const handleEditTableClick = (t) => {
   setEditingTable(t);
-  // Pastikan properti table_number terpetakan ke 'number'
-  setTableForm({ id: t.id, number: t.table_number || t.number || '' });
+  const num = t.table_number || t.number || '';
+  // Set kedua properti agar aman digunakan di input modal manapun
+  setTableForm({ id: t.id, number: num, table_number: num });
   setIsTableModalOpen(true);
 };
 
@@ -275,6 +285,10 @@ const handleDeleteTable = async (id) => {
     alert('Gagal menghapus meja: ' + error.message);
     return;
   }
+
+  // Update state lokal secara efisien
+  setTables((prevTables) => prevTables.filter((t) => t.id !== id));
+};
 
   // Update state lokal secara presisi tanpa perlu fetch ulang
   setTables((prevTables) => prevTables.filter((t) => t.id !== id));
