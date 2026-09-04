@@ -49,12 +49,6 @@ export default function App() {
   const [menuList, setMenuList] = useState([]);
   const [discountRules, setDiscountRules] = useState([]);
 
-  // Fetch Data Awal & Realtime Subscription Supabase
-  useEffect(() => {
-    fetchTables();
-    fetchMenuList();
-    fetchDiscountRules();
-
 // Fetch Data Awal & Realtime Subscription Supabase
   useEffect(() => {
     fetchTables();
