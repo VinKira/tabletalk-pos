@@ -55,22 +55,21 @@ export default function App() {
     fetchMenuList();
     fetchDiscountRules();
 
-// Listen Perubahan Meja Realtime
-  const tableChannel = supabase
-    .channel('public:tables')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, () => {
-      fetchTables(); // Panggil fetchTables setiap kali ada INSERT/UPDATE/DELETE
-    })
-    .subscribe();
+// Fetch Data Awal & Realtime Subscription Supabase
+  useEffect(() => {
+    fetchTables();
+    fetchMenuList();
+    fetchDiscountRules();
 
-  // (listener menu & discount tetap sama...)
-  
-  return () => {
-    supabase.removeChannel(tableChannel);
-  };
-}, []);
+    // 1. Listen Perubahan Meja Realtime
+    const tableChannel = supabase
+      .channel('public:tables')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, () => {
+        fetchTables();
+      })
+      .subscribe();
 
-    // Listen Perubahan Menu Realtime
+    // 2. Listen Perubahan Menu Realtime
     const menuChannel = supabase
       .channel('public:menu_list')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_list' }, () => {
@@ -78,7 +77,7 @@ export default function App() {
       })
       .subscribe();
 
-    // Listen Perubahan Promo Realtime
+    // 3. Listen Perubahan Promo Realtime
     const discountChannel = supabase
       .channel('public:discount_rules')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'discount_rules' }, () => {
@@ -86,6 +85,7 @@ export default function App() {
       })
       .subscribe();
 
+    // Cleanup SEMUA channel dalam satu return
     return () => {
       supabase.removeChannel(tableChannel);
       supabase.removeChannel(menuChannel);
