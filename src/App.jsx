@@ -194,31 +194,30 @@ const fetchTakeawayOrders = async () => {
   // --- POS Mode Selection ---
   const [posMode, setPosMode] = useState('dine-in'); // 'dine-in' | 'takeaway'
 
-  // --- Dine-In State (dengan Auto-Save LocalStorage) ---
+// --- Dine-In State ---
   const [selectedTable, setSelectedTable] = useState(null);
+  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
 
-  const [activeSessions, setActiveSessions] = useState(() => {
-    const saved = localStorage.getItem('pos_dinein_active_sessions');
-    return saved ? JSON.parse(saved) : {};
-  });
+  // Pure State Supabase (Tanpa LocalStorage)
+  const [confirmedOrders, setConfirmedOrders] = useState({});
 
-  const [confirmedOrders, setConfirmedOrders] = useState(() => {
-    const saved = localStorage.getItem('pos_dinein_confirmed_orders');
-    return saved ? JSON.parse(saved) : {};
-  });
-
+  // Draft Cart (Tetap pakai LocalStorage agar aman kalau ketutup/refresh)
   const [currentCart, setCurrentCart] = useState(() => {
     const saved = localStorage.getItem('pos_dinein_current_cart');
     return saved ? JSON.parse(saved) : {};
   });
 
-  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
-
   // --- Takeaway State ---
   const [takeawayPlatform, setTakeawayPlatform] = useState('On Site');
   const [takeawayCustomerName, setTakeawayCustomerName] = useState('');
   const [takeawayOrderNoInput, setTakeawayOrderNoInput] = useState('');
-  
+  const [selectedTakeawayOrder, setSelectedTakeawayOrder] = useState(null);
+  const [showTakeawayPaymentModal, setShowTakeawayPaymentModal] = useState(false);
+
+  // Pure State Supabase (Tanpa LocalStorage)
+  const [takeawayOrders, setTakeawayOrders] = useState([]);
+
+  // Draft Cart & Counter Takeaway (Tetap simpan ke LocalStorage)
   const [autoTakeawayCounter, setAutoTakeawayCounter] = useState(() => {
     const saved = localStorage.getItem('pos_takeaway_counter');
     return saved ? JSON.parse(saved) : 1;
@@ -228,39 +227,19 @@ const fetchTakeawayOrders = async () => {
     const saved = localStorage.getItem('pos_draft_takeaway_cart');
     return saved ? JSON.parse(saved) : [];
   });
-  
-  const [takeawayOrders, setTakeawayOrders] = useState(() => {
-    const saved = localStorage.getItem('pos_active_takeaway_orders');
-    return saved ? JSON.parse(saved) : [];
-  });
 
-  const [selectedTakeawayOrder, setSelectedTakeawayOrder] = useState(null);
-  const [showTakeawayPaymentModal, setShowTakeawayPaymentModal] = useState(false);
-
-  // ================= AUTO-SAVE EFFECTS TO LOCALSTORAGE =================
-  useEffect(() => {
-    localStorage.setItem('pos_dinein_active_sessions', JSON.stringify(activeSessions));
-  }, [activeSessions]);
-
-  useEffect(() => {
-    localStorage.setItem('pos_dinein_confirmed_orders', JSON.stringify(confirmedOrders));
-  }, [confirmedOrders]);
-
+  // ================= AUTO-SAVE ONLY FOR DRAFTS & LOCAL UTILS =================
   useEffect(() => {
     localStorage.setItem('pos_dinein_current_cart', JSON.stringify(currentCart));
   }, [currentCart]);
-
-  useEffect(() => {
-    localStorage.setItem('pos_takeaway_counter', JSON.stringify(autoTakeawayCounter));
-  }, [autoTakeawayCounter]);
 
   useEffect(() => {
     localStorage.setItem('pos_draft_takeaway_cart', JSON.stringify(takeawayCart));
   }, [takeawayCart]);
 
   useEffect(() => {
-    localStorage.setItem('pos_active_takeaway_orders', JSON.stringify(takeawayOrders));
-  }, [takeawayOrders]);
+    localStorage.setItem('pos_takeaway_counter', JSON.stringify(autoTakeawayCounter));
+  }, [autoTakeawayCounter]);
   // =====================================================================
 
 // --- 1. Manajemen Meja CRUD ---
@@ -500,6 +479,8 @@ const handleConfirmOrder = async () => {
     
     // Update status meja jadi occupied jika belum
     await supabase.from('tables').update({ status: 'occupied' }).eq('id', tableId);
+    await fetchDineInOrders();
+    await fetchTables();
     
     alert('Order berhasil dikonfirmasi & dikirim ke Printer Dapur!');
   }
@@ -638,6 +619,8 @@ const handleConfirmTakeawayOrder = async () => {
     setTakeawayCustomerName('');
     setTakeawayOrderNoInput('');
 
+    await fetchTakeawayOrders();
+    
     alert(`Order ${generatedOrderNo} Berhasil Dikonfirmasi & Dicetak ke Dapur! Silakan buat orderan berikutnya.`);
   } else {
     alert('Gagal menyimpan order takeaway!');
