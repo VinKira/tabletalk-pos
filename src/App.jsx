@@ -70,12 +70,13 @@ export default function App() {
       .subscribe();
 
     // 2. Listen Perubahan Menu Realtime
-    const menuChannel = supabase
-      .channel('public:menu_list')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_list' }, () => {
-        fetchMenuList();
-      })
-      .subscribe();
+const menuChannel = supabase
+  .channel('public:menu_list')
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_list' }, () => {
+    fetchMenuList();
+    fetchActiveOrders(); // Tambahkan ini agar merespons perubahan harga
+  })
+  .subscribe();
 
     // 3. Listen Perubahan Promo Realtime
     const discountChannel = supabase
@@ -176,17 +177,19 @@ export default function App() {
           batchId: b.id,
           time: new Date(b.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
           type: 'Kasir',
-          items: (b.order_items || []).map(it => ({
-            id: it.menu_id,
-            name: it.menu_name,
-            price: Number(it.price),
-            qty: Number(it.qty)
-          }))
+          items: (b.order_items || []).map(it => {
+            // Cari harga terbaru di master menu, jika tidak ada baru gunakan harga lama
+            const liveMenu = menuList.find(m => m.id === it.menu_id);
+            const currentPrice = liveMenu ? Number(liveMenu.price) : Number(it.price);
+        
+            return {
+              id: it.menu_id,
+              name: it.menu_name,
+              price: currentPrice, // Menggunakan harga live
+              qty: Number(it.qty)
+            };
+          })
         }));
-        confirmedMap[tId] = batches;
-      });
-    }
-    setConfirmedOrders(confirmedMap);
 
     // 3. Fetch Active Takeaway Orders
     const { data: takeaways } = await supabase
@@ -199,27 +202,41 @@ export default function App() {
       .eq('status', 'active')
       .order('created_at', { ascending: false });
 
-    if (takeaways) {
-      const formattedTakeaway = takeaways.map(t => ({
-        id: t.id,
-        orderNo: t.order_no,
-        platform: t.platform,
-        customerName: t.customer_name || 'Pelanggan',
-        subTotal: Number(t.subtotal || 0),
-        discount: Number(t.discount || 0),
-        total: Number(t.total_amount || 0),
-        isPaid: Boolean(t.is_paid),
-        time: new Date(t.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-        items: (t.order_items || []).map(it => ({
-          id: it.menu_id,
-          name: it.menu_name,
-          price: Number(it.price),
-          qty: Number(it.qty)
-        }))
-      }));
+if (takeaways) {
+      const formattedTakeaway = takeaways.map(t => {
+        const items = (t.order_items || []).map(it => {
+          // Cari harga terbaru di master menuList
+          const liveMenu = menuList.find(m => m.id === Number(it.menu_id));
+          const currentPrice = liveMenu ? Number(liveMenu.price) : Number(it.price);
+
+          return {
+            id: it.menu_id,
+            name: it.menu_name,
+            price: currentPrice, // Menggunakan harga ter-update dari master menu
+            qty: Number(it.qty)
+          };
+        });
+
+        // Hitung ulang subtotal & diskon secara realtime berdasarkan harga & promo terbaru
+        const subTotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
+        const discount = calculateAutoDiscount(items); 
+        const total = Math.max(0, subTotal - discount);
+
+        return {
+          id: t.id,
+          orderNo: t.order_no,
+          platform: t.platform,
+          customerName: t.customer_name || 'Pelanggan',
+          subTotal,
+          discount,
+          total,
+          isPaid: Boolean(t.is_paid),
+          time: new Date(t.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+          items
+        };
+      });
       setTakeawayOrders(formattedTakeaway);
     }
-  };
 
   const [discountForm, setDiscountForm] = useState({ id: null, menuId: '', minQty: 1, discountAmount: 0 });
   const [isEditingDiscount, setIsEditingDiscount] = useState(false);
