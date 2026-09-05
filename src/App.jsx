@@ -54,6 +54,8 @@ export default function App() {
     fetchTables();
     fetchMenuList();
     fetchDiscountRules();
+    fetchDineInOrders();
+    fetchTakeawayOrders();
 
     // 1. Listen Perubahan Meja Realtime
     const tableChannel = supabase
@@ -79,11 +81,22 @@ export default function App() {
       })
       .subscribe();
 
+    // --- TAMBAHAN BARU: Realtime Orders (Dine-in & Takeaway) ---
+    const orderChannel = supabase
+      .channel('public:orders_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+        fetchDineInOrders();
+        fetchTakeawayOrders();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_batches' }, fetchDineInOrders)
+      .subscribe();
+
     // Cleanup SEMUA channel dalam satu return
     return () => {
       supabase.removeChannel(tableChannel);
       supabase.removeChannel(menuChannel);
       supabase.removeChannel(discountChannel);
+      supabase.removeChannel(orderChannel);
     };
   }, []);
 
@@ -110,6 +123,64 @@ export default function App() {
       setDiscountRules(formatted);
     }
   };
+
+  const fetchDineInOrders = async () => {
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*, order_batches(*, order_items(*))')
+    .eq('type', 'dine-in')
+    .neq('status', 'completed');
+
+  if (!error && data) {
+    const formattedDineIn = {};
+    data.forEach(order => {
+      if (order.table_id) {
+        formattedDineIn[order.table_id] = (order.order_batches || []).map(b => ({
+          batchId: b.id,
+          time: new Date(b.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+          type: 'Kasir',
+          items: (b.order_items || []).map(it => ({
+            id: it.menu_id,
+            name: it.menu_name,
+            price: Number(it.price),
+            qty: Number(it.quantity)
+          }))
+        }));
+      }
+    });
+    setConfirmedOrders(formattedDineIn);
+  }
+};
+
+const fetchTakeawayOrders = async () => {
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*, order_items(*)')
+    .eq('type', 'takeaway')
+    .neq('status', 'completed')
+    .order('created_at', { ascending: false });
+
+  if (!error && data) {
+    const formattedTakeaway = data.map(o => ({
+      id: o.id,
+      orderNo: o.order_no,
+      platform: o.platform || 'On Site',
+      customerName: o.customer_name || 'Pelanggan',
+      subTotal: Number(o.subtotal || 0),
+      discount: Number(o.discount || 0),
+      total: Number(o.total_amount || 0),
+      isPaid: o.is_paid || false,
+      time: new Date(o.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+      items: (o.order_items || []).map(it => ({
+        id: it.menu_id,
+        name: it.menu_name,
+        price: Number(it.price),
+        qty: Number(it.quantity)
+      }))
+    }));
+    setTakeawayOrders(formattedTakeaway);
+  }
+};
 
   const [discountForm, setDiscountForm] = useState({ id: null, menuId: '', minQty: 1, discountAmount: 0 });
   const [isEditingDiscount, setIsEditingDiscount] = useState(false);
@@ -379,145 +450,214 @@ const handleDeleteTable = async (id) => {
     setCurrentCart(prev => ({ ...prev, [tableId]: cart.filter(item => item.id !== itemId) }));
   };
 
-  const handleConfirmOrder = () => {
-    if (!selectedTable) return;
-    const tableId = selectedTable.id;
-    const cart = currentCart[tableId] || [];
-    if (cart.length === 0) return alert('Keranjang pesanan masih kosong!');
+// --- 1. Dine-In: Confirm Order ---
+const handleConfirmOrder = async () => {
+  if (!selectedTable) return;
+  const tableId = selectedTable.id;
+  const cart = currentCart[tableId] || [];
+  if (cart.length === 0) return alert('Keranjang pesanan masih kosong!');
 
-    const newBatch = {
-      batchId: crypto.randomUUID(),
-      time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-      type: 'Kasir',
-      items: [...cart]
-    };
+  // A. Cari atau buat Order Aktif di Supabase
+  let { data: activeOrder } = await supabase
+    .from('orders')
+    .select('id')
+    .eq('table_id', tableId)
+    .neq('status', 'completed')
+    .maybeSingle();
 
-    const existingBatches = confirmedOrders[tableId] || [];
-    setConfirmedOrders(prev => ({ ...prev, [tableId]: [...existingBatches, newBatch] }));
+  if (!activeOrder) {
+    const { data: newOrder, error } = await supabase
+      .from('orders')
+      .insert([{ table_id: tableId, type: 'dine-in', status: 'active' }])
+      .select()
+      .single();
+
+    if (error) return alert('Gagal membuat order: ' + error.message);
+    activeOrder = newOrder;
+  }
+
+  // B. Simpan Batch Pesanan
+  const { data: batch, error: batchErr } = await supabase
+    .from('order_batches')
+    .insert([{ order_id: activeOrder.id }])
+    .select()
+    .single();
+
+  if (!batchErr && batch) {
+    const itemsPayload = cart.map(item => ({
+      batch_id: batch.id,
+      order_id: activeOrder.id,
+      menu_id: item.id,
+      menu_name: item.name,
+      price: item.price,
+      quantity: item.qty
+    }));
+
+    await supabase.from('order_items').insert(itemsPayload);
+    
+    // Reset keranjang lokal meja ini
     setCurrentCart(prev => ({ ...prev, [tableId]: [] }));
-
+    
+    // Update status meja jadi occupied jika belum
+    await supabase.from('tables').update({ status: 'occupied' }).eq('id', tableId);
+    
     alert('Order berhasil dikonfirmasi & dikirim ke Printer Dapur!');
-  };
+  }
+};
 
-  const getTableRecap = (tableId) => {
-    const batches = confirmedOrders[tableId] || [];
-    const recapMap = {};
+const getTableRecap = (tableId) => {
+  const batches = confirmedOrders[tableId] || [];
+  const recapMap = {};
 
-    batches.forEach(b => {
-      b.items.forEach(it => {
-        if (recapMap[it.name]) {
-          recapMap[it.name].qty += it.qty;
-        } else {
-          recapMap[it.name] = { ...it, id: it.id };
-        }
-      });
-    });
-
-    const recapList = Object.values(recapMap);
-    const subTotal = recapList.reduce((sum, item) => sum + (item.price * item.qty), 0);
-    const autoDiscount = calculateAutoDiscount(recapList);
-    return { recapList, subTotal, autoDiscount, batches };
-  };
-
-  const handleCloseTableClick = () => {
-    if (!selectedTable) return;
-
-    if (finalTotal === 0 || batches.length === 0) {
-      const confirmClose = confirm("Tidak ada tagihan pada meja ini. Tutup dan kosongkan meja sekarang?");
-      if (confirmClose) {
-        const tableId = selectedTable.id;
-        
-        setActiveSessions(prev => { const n = { ...prev }; delete n[tableId]; return n; });
-        setConfirmedOrders(prev => { const n = { ...prev }; delete n[tableId]; return n; });
-        setCurrentCart(prev => { const n = { ...prev }; delete n[tableId]; return n; });
-
-        supabase.from('tables').update({ status: 'available' }).eq('id', tableId);
-        setSelectedTable(prev => ({ ...prev, status: 'available' }));
+  batches.forEach(b => {
+    b.items.forEach(it => {
+      if (recapMap[it.name]) {
+        recapMap[it.name].qty += it.qty;
+      } else {
+        recapMap[it.name] = { ...it, id: it.id };
       }
-    } else {
-      setShowCheckoutModal(true);
+    });
+  });
+
+  const recapList = Object.values(recapMap);
+  const subTotal = recapList.reduce((sum, item) => sum + (item.price * item.qty), 0);
+  const autoDiscount = calculateAutoDiscount(recapList);
+  return { recapList, subTotal, autoDiscount, batches };
+};
+
+// --- 2. Dine-In: Close Table & Payment ---
+const handleCloseTableClick = async () => {
+  if (!selectedTable) return;
+
+  const { recapList, batches } = getTableRecap(selectedTable.id);
+
+  if (recapList.length === 0 || batches.length === 0) {
+    const confirmClose = confirm("Tidak ada tagihan pada meja ini. Tutup dan kosongkan meja sekarang?");
+    if (confirmClose) {
+      const tableId = selectedTable.id;
+      
+      // Update status order jika ada yang nyanggut jadi completed
+      await supabase.from('orders').update({ status: 'completed' }).eq('table_id', tableId).neq('status', 'completed');
+      await supabase.from('tables').update({ status: 'available' }).eq('id', tableId);
+
+      setActiveSessions(prev => { const n = { ...prev }; delete n[tableId]; return n; });
+      setConfirmedOrders(prev => { const n = { ...prev }; delete n[tableId]; return n; });
+      setCurrentCart(prev => { const n = { ...prev }; delete n[tableId]; return n; });
+
+      setSelectedTable(prev => ({ ...prev, status: 'available' }));
     }
-  };
-  
-  const handlePaymentSuccess = async () => {
-    if (!selectedTable) return;
-    const tableId = selectedTable.id;
+  } else {
+    setShowCheckoutModal(true);
+  }
+};
 
-    alert('Pembayaran Sukses! Struk Berhasil Dicetak.');
+const handlePaymentSuccess = async () => {
+  if (!selectedTable) return;
+  const tableId = selectedTable.id;
 
-    setActiveSessions(prev => { const n = { ...prev }; delete n[tableId]; return n; });
-    setConfirmedOrders(prev => { const n = { ...prev }; delete n[tableId]; return n; });
-    setCurrentCart(prev => { const n = { ...prev }; delete n[tableId]; return n; });
+  // Mark Order di Supabase sebagai Selesai
+  await supabase
+    .from('orders')
+    .update({ status: 'completed', is_paid: true })
+    .eq('table_id', tableId)
+    .neq('status', 'completed');
 
-    await supabase.from('tables').update({ status: 'available' }).eq('id', tableId);
-    setSelectedTable(prev => ({ ...prev, status: 'available' }));
-    setShowCheckoutModal(false);
-  };
+  // Kosongkan Meja
+  await supabase.from('tables').update({ status: 'available' }).eq('id', tableId);
 
-  // --- 5. Alur Operasional Takeaway ---
-  const handleAddToTakeawayCart = (menuItem) => {
-    const existingIndex = takeawayCart.findIndex(item => item.id === menuItem.id);
-    if (existingIndex > -1) {
-      setTakeawayCart(takeawayCart.map((item, idx) => 
-        idx === existingIndex ? { ...item, qty: item.qty + 1 } : item
-      ));
-    } else {
-      setTakeawayCart([...takeawayCart, { ...menuItem, qty: 1 }]);
-    }
-  };
+  setActiveSessions(prev => { const n = { ...prev }; delete n[tableId]; return n; });
+  setConfirmedOrders(prev => { const n = { ...prev }; delete n[tableId]; return n; });
+  setCurrentCart(prev => { const n = { ...prev }; delete n[tableId]; return n; });
 
-  const handleRemoveFromTakeawayCart = (itemId) => {
-    setTakeawayCart(takeawayCart.filter(item => item.id !== itemId));
-  };
+  setSelectedTable(prev => ({ ...prev, status: 'available' }));
+  setShowCheckoutModal(false);
 
-  const handleConfirmTakeawayOrder = () => {
-    if (takeawayCart.length === 0) return alert('Keranjang Takeaway kosong!');
+  alert('Pembayaran Sukses! Struk Berhasil Dicetak.');
+};
 
-    let generatedOrderNo = '';
-    if (takeawayPlatform === 'On Site') {
-      generatedOrderNo = `#${String(autoTakeawayCounter).padStart(3, '0')}`;
-      setAutoTakeawayCounter(prev => prev + 1);
-    } else {
-      if (!takeawayOrderNoInput.trim()) return alert('Masukkan Nomor Orderan Aplikasi terlebih dahulu!');
-      generatedOrderNo = `#${takeawayOrderNoInput.trim()}`;
-    }
+// --- 3. Alur Operasional Takeaway ---
+const handleAddToTakeawayCart = (menuItem) => {
+  const existingIndex = takeawayCart.findIndex(item => item.id === menuItem.id);
+  if (existingIndex > -1) {
+    setTakeawayCart(takeawayCart.map((item, idx) => 
+      idx === existingIndex ? { ...item, qty: item.qty + 1 } : item
+    ));
+  } else {
+    setTakeawayCart([...takeawayCart, { ...menuItem, qty: 1 }]);
+  }
+};
 
-    const subTotal = takeawayCart.reduce((sum, item) => sum + (item.price * item.qty), 0);
-    const autoDiscount = calculateAutoDiscount(takeawayCart);
+const handleRemoveFromTakeawayCart = (itemId) => {
+  setTakeawayCart(takeawayCart.filter(item => item.id !== itemId));
+};
 
-    const newTakeawayOrder = {
-      id: crypto.randomUUID(),
-      orderNo: generatedOrderNo,
+const handleConfirmTakeawayOrder = async () => {
+  if (takeawayCart.length === 0) return alert('Keranjang Takeaway kosong!');
+
+  let generatedOrderNo = '';
+  if (takeawayPlatform === 'On Site') {
+    generatedOrderNo = `#${String(autoTakeawayCounter).padStart(3, '0')}`;
+    setAutoTakeawayCounter(prev => prev + 1);
+  } else {
+    if (!takeawayOrderNoInput.trim()) return alert('Masukkan Nomor Orderan Aplikasi terlebih dahulu!');
+    generatedOrderNo = `#${takeawayOrderNoInput.trim()}`;
+  }
+
+  const subTotal = takeawayCart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+  const autoDiscount = calculateAutoDiscount(takeawayCart);
+
+  // Simpan Order Takeaway ke Supabase
+  const { data: newOrder, error } = await supabase
+    .from('orders')
+    .insert([{
+      order_no: generatedOrderNo,
+      type: 'takeaway',
       platform: takeawayPlatform,
-      customerName: takeawayCustomerName || 'Pelanggan',
-      items: [...takeawayCart],
-      subTotal,
+      customer_name: takeawayCustomerName || 'Pelanggan',
+      subtotal: subTotal,
       discount: autoDiscount,
-      total: Math.max(0, subTotal - autoDiscount),
-      isPaid: false,
-      isCompleted: false,
-      time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-    };
+      total_amount: Math.max(0, subTotal - autoDiscount),
+      status: 'active',
+      is_paid: false
+    }])
+    .select()
+    .single();
 
-    setTakeawayOrders(prev => [newTakeawayOrder, ...prev]);
+  if (!error && newOrder) {
+    const itemsPayload = takeawayCart.map(item => ({
+      order_id: newOrder.id,
+      menu_id: item.id,
+      menu_name: item.name,
+      price: item.price,
+      quantity: item.qty
+    }));
+
+    await supabase.from('order_items').insert(itemsPayload);
+
     setTakeawayCart([]);
     setTakeawayCustomerName('');
     setTakeawayOrderNoInput('');
 
     alert(`Order ${generatedOrderNo} Berhasil Dikonfirmasi & Dicetak ke Dapur! Silakan buat orderan berikutnya.`);
-  };
+  } else {
+    alert('Gagal menyimpan order takeaway!');
+  }
+};
 
-  const handlePayTakeaway = (order) => {
-    setTakeawayOrders(prev => prev.map(o => o.id === order.id ? { ...o, isPaid: true } : o));
-    setShowTakeawayPaymentModal(false);
-    alert(`Pembayaran Order ${order.orderNo} Sukses & Struk Dicetak! Status: Menunggu Driver/Pelanggan Mengambil.`);
-  };
+const handlePayTakeaway = async (order) => {
+  // Update status bayar di Supabase
+  await supabase.from('orders').update({ is_paid: true }).eq('id', order.id);
 
-  const handleCompleteTakeaway = (orderId) => {
-    if (confirm('Selesaikan & keluarkan orderan ini dari daftar antrean?')) {
-      setTakeawayOrders(prev => prev.filter(o => o.id !== orderId));
-    }
-  };
+  setShowTakeawayPaymentModal(false);
+  alert(`Pembayaran Order ${order.orderNo} Sukses & Struk Dicetak! Status: Menunggu Driver/Pelanggan Mengambil.`);
+};
+
+const handleCompleteTakeaway = async (orderId) => {
+  if (confirm('Selesaikan & keluarkan orderan ini dari daftar antrean?')) {
+    // Selesaikan orderan di Supabase
+    await supabase.from('orders').update({ status: 'completed' }).eq('id', orderId);
+  }
+};
 
   // Calculations Dine-In
   const activeTableId = selectedTable?.id;
