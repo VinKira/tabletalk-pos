@@ -54,6 +54,58 @@ export default function App() {
   const [confirmedOrders, setConfirmedOrders] = useState({}); // { [tableId]: [batches] }
   const [takeawayOrders, setTakeawayOrders] = useState([]); // [array of takeaway orders]
 
+  // Form State untuk Owner
+  const [discountForm, setDiscountForm] = useState({ id: null, menuId: '', minQty: 1, discountAmount: 0 });
+  const [isEditingDiscount, setIsEditingDiscount] = useState(false);
+  const [tableForm, setTableForm] = useState({ id: null, number: '' });
+  const [isEditingTable, setIsEditingTable] = useState(false);
+  const [menuForm, setMenuForm] = useState({ id: null, name: '', price: '', category: 'food' });
+  const [isEditingMenu, setIsEditingMenu] = useState(false);
+
+  // --- POS Mode Selection ---
+  const [posMode, setPosMode] = useState('dine-in'); // 'dine-in' | 'takeaway'
+
+  // --- Dine-In State (Draft Cart di LocalStorage) ---
+  const [selectedTable, setSelectedTable] = useState(null);
+
+  const [currentCart, setCurrentCart] = useState(() => {
+    const saved = localStorage.getItem('pos_dinein_current_cart');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+
+  // --- Takeaway State ---
+  const [takeawayPlatform, setTakeawayPlatform] = useState('On Site');
+  const [takeawayCustomerName, setTakeawayCustomerName] = useState('');
+  const [takeawayOrderNoInput, setTakeawayOrderNoInput] = useState('');
+  
+  const [autoTakeawayCounter, setAutoTakeawayCounter] = useState(() => {
+    const saved = localStorage.getItem('pos_takeaway_counter');
+    return saved ? JSON.parse(saved) : 1;
+  });
+
+  const [takeawayCart, setTakeawayCart] = useState(() => {
+    const saved = localStorage.getItem('pos_draft_takeaway_cart');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [selectedTakeawayOrder, setSelectedTakeawayOrder] = useState(null);
+  const [showTakeawayPaymentModal, setShowTakeawayPaymentModal] = useState(false);
+
+  // Auto-Save Draft Carts
+  useEffect(() => {
+    localStorage.setItem('pos_dinein_current_cart', JSON.stringify(currentCart));
+  }, [currentCart]);
+
+  useEffect(() => {
+    localStorage.setItem('pos_takeaway_counter', JSON.stringify(autoTakeawayCounter));
+  }, [autoTakeawayCounter]);
+
+  useEffect(() => {
+    localStorage.setItem('pos_draft_takeaway_cart', JSON.stringify(takeawayCart));
+  }, [takeawayCart]);
+
   // Fetch Data Awal & Realtime Subscription Supabase
   useEffect(() => {
     fetchTables();
@@ -70,13 +122,13 @@ export default function App() {
       .subscribe();
 
     // 2. Listen Perubahan Menu Realtime
-const menuChannel = supabase
-  .channel('public:menu_list')
-  .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_list' }, () => {
-    fetchMenuList();
-    fetchActiveOrders(); // Tambahkan ini agar merespons perubahan harga
-  })
-  .subscribe();
+    const menuChannel = supabase
+      .channel('public:menu_list')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_list' }, () => {
+        fetchMenuList();
+        fetchActiveOrders();
+      })
+      .subscribe();
 
     // 3. Listen Perubahan Promo Realtime
     const discountChannel = supabase
@@ -178,18 +230,21 @@ const menuChannel = supabase
           time: new Date(b.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
           type: 'Kasir',
           items: (b.order_items || []).map(it => {
-            // Cari harga terbaru di master menu, jika tidak ada baru gunakan harga lama
-            const liveMenu = menuList.find(m => m.id === it.menu_id);
+            const liveMenu = menuList.find(m => m.id === Number(it.menu_id));
             const currentPrice = liveMenu ? Number(liveMenu.price) : Number(it.price);
-        
+
             return {
               id: it.menu_id,
               name: it.menu_name,
-              price: currentPrice, // Menggunakan harga live
+              price: currentPrice,
               qty: Number(it.qty)
             };
           })
         }));
+        confirmedMap[tId] = batches;
+      });
+    }
+    setConfirmedOrders(confirmedMap);
 
     // 3. Fetch Active Takeaway Orders
     const { data: takeaways } = await supabase
@@ -202,22 +257,20 @@ const menuChannel = supabase
       .eq('status', 'active')
       .order('created_at', { ascending: false });
 
-if (takeaways) {
+    if (takeaways) {
       const formattedTakeaway = takeaways.map(t => {
         const items = (t.order_items || []).map(it => {
-          // Cari harga terbaru di master menuList
           const liveMenu = menuList.find(m => m.id === Number(it.menu_id));
           const currentPrice = liveMenu ? Number(liveMenu.price) : Number(it.price);
 
           return {
             id: it.menu_id,
             name: it.menu_name,
-            price: currentPrice, // Menggunakan harga ter-update dari master menu
+            price: currentPrice,
             qty: Number(it.qty)
           };
         });
 
-        // Hitung ulang subtotal & diskon secara realtime berdasarkan harga & promo terbaru
         const subTotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
         const discount = calculateAutoDiscount(items); 
         const total = Math.max(0, subTotal - discount);
@@ -237,59 +290,7 @@ if (takeaways) {
       });
       setTakeawayOrders(formattedTakeaway);
     }
-
-  const [discountForm, setDiscountForm] = useState({ id: null, menuId: '', minQty: 1, discountAmount: 0 });
-  const [isEditingDiscount, setIsEditingDiscount] = useState(false);
-
-  // Form State untuk Owner (Meja & Menu)
-  const [tableForm, setTableForm] = useState({ id: null, number: '' });
-  const [isEditingTable, setIsEditingTable] = useState(false);
-  const [menuForm, setMenuForm] = useState({ id: null, name: '', price: '', category: 'food' });
-  const [isEditingMenu, setIsEditingMenu] = useState(false);
-
-  // --- POS Mode Selection ---
-  const [posMode, setPosMode] = useState('dine-in'); // 'dine-in' | 'takeaway'
-
-  // --- Dine-In State (Draft Cart di LocalStorage) ---
-  const [selectedTable, setSelectedTable] = useState(null);
-
-  const [currentCart, setCurrentCart] = useState(() => {
-    const saved = localStorage.getItem('pos_dinein_current_cart');
-    return saved ? JSON.parse(saved) : {};
-  });
-
-  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
-
-  // --- Takeaway State ---
-  const [takeawayPlatform, setTakeawayPlatform] = useState('On Site');
-  const [takeawayCustomerName, setTakeawayCustomerName] = useState('');
-  const [takeawayOrderNoInput, setTakeawayOrderNoInput] = useState('');
-  
-  const [autoTakeawayCounter, setAutoTakeawayCounter] = useState(() => {
-    const saved = localStorage.getItem('pos_takeaway_counter');
-    return saved ? JSON.parse(saved) : 1;
-  });
-
-  const [takeawayCart, setTakeawayCart] = useState(() => {
-    const saved = localStorage.getItem('pos_draft_takeaway_cart');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [selectedTakeawayOrder, setSelectedTakeawayOrder] = useState(null);
-  const [showTakeawayPaymentModal, setShowTakeawayPaymentModal] = useState(false);
-
-  // Auto-Save Draft Carts
-  useEffect(() => {
-    localStorage.setItem('pos_dinein_current_cart', JSON.stringify(currentCart));
-  }, [currentCart]);
-
-  useEffect(() => {
-    localStorage.setItem('pos_takeaway_counter', JSON.stringify(autoTakeawayCounter));
-  }, [autoTakeawayCounter]);
-
-  useEffect(() => {
-    localStorage.setItem('pos_draft_takeaway_cart', JSON.stringify(takeawayCart));
-  }, [takeawayCart]);
+  };
 
   // --- 1. Manajemen Meja CRUD ---
   const handleSaveTable = async (e) => {
@@ -422,18 +423,16 @@ if (takeaways) {
     return totalDiscount;
   };
 
-  // --- 4. Alur Operasional POS (Dine-In - CONNECTED TO SUPABASE) ---
+  // --- 4. Alur Operasional POS (Dine-In) ---
   const handleSelectTable = (table) => {
     setSelectedTable(table);
   };
 
-// 1. OPEN TABLE DINE-IN
   const handleOpenTable = async () => {
     if (!selectedTable) return;
     const tableId = selectedTable.id;
 
     try {
-      // Buat Table Session Baru
       const { data: sessionData, error: sessionErr } = await supabase
         .from('table_sessions')
         .insert([{ table_id: tableId, status: 'open' }])
@@ -442,7 +441,6 @@ if (takeaways) {
 
       if (sessionErr) throw sessionErr;
 
-      // Buat Order Dine-In Utama
       const { error: orderErr } = await supabase
         .from('orders')
         .insert([{
@@ -454,7 +452,6 @@ if (takeaways) {
 
       if (orderErr) throw orderErr;
 
-      // Update Status Meja
       const { error: tableErr } = await supabase
         .from('tables')
         .update({ status: 'occupied' })
@@ -471,7 +468,6 @@ if (takeaways) {
     }
   };
 
-  // 2. CANCEL OPEN TABLE
   const handleCancelOpenTable = async () => {
     if (!selectedTable) return;
     const tableId = selectedTable.id;
@@ -487,7 +483,6 @@ if (takeaways) {
 
       await supabase.from('tables').update({ status: 'available' }).eq('id', tableId);
 
-      // Reset Draft Cart Lokal Meja Ini
       setCurrentCart(prev => {
         const updated = { ...prev };
         delete updated[tableId];
@@ -503,7 +498,6 @@ if (takeaways) {
     }
   };
 
-  // 3. CART HANDLERS
   const handleAddToCart = (menuItem) => {
     if (!selectedTable || selectedTable.status !== 'occupied') return;
     const tableId = selectedTable.id;
@@ -530,7 +524,6 @@ if (takeaways) {
     setCurrentCart(prev => ({ ...prev, [tableId]: cart.filter(item => item.id !== itemId) }));
   };
 
-  // 4. CONFIRM ORDER DINE-IN
   const handleConfirmOrder = async () => {
     if (!selectedTable) return;
     const tableId = selectedTable.id;
@@ -538,7 +531,6 @@ if (takeaways) {
     if (cart.length === 0) return alert('Keranjang pesanan masih kosong!');
 
     try {
-      // Ambil Active Order ID dengan limit 1 agar tidak crash jika data ganda
       const { data: activeOrders, error: orderErr } = await supabase
         .from('orders')
         .select('id')
@@ -556,7 +548,6 @@ if (takeaways) {
 
       const activeOrderId = activeOrders[0].id;
 
-      // Buat Order Batch Baru
       const { data: batchData, error: batchErr } = await supabase
         .from('order_batches')
         .insert([{ order_id: activeOrderId }])
@@ -565,7 +556,6 @@ if (takeaways) {
 
       if (batchErr) throw batchErr;
 
-      // Masukkan Item Pesanan ke Order Items
       const itemsToInsert = cart.map(item => ({
         order_id: activeOrderId,
         batch_id: batchData.id,
@@ -579,7 +569,6 @@ if (takeaways) {
       const { error: itemsErr } = await supabase.from('order_items').insert(itemsToInsert);
       if (itemsErr) throw itemsErr;
 
-      // Kosongkan Draft Cart Meja Ini
       setCurrentCart(prev => ({ ...prev, [tableId]: [] }));
       fetchActiveOrders();
 
@@ -590,7 +579,6 @@ if (takeaways) {
     }
   };
 
-  // 5. RECAP DINE-IN
   const getTableRecap = (tableId) => {
     const batches = confirmedOrders[tableId] || [];
     const recapMap = {};
@@ -613,7 +601,6 @@ if (takeaways) {
     return { recapList, subTotal, autoDiscount, finalTotal, batches };
   };
 
-  // 6. TRIGGER CLOSE TABLE BUTTON
   const handleCloseTableClick = () => {
     if (!selectedTable) return;
     const { finalTotal, batches } = getTableRecap(selectedTable.id);
@@ -628,7 +615,6 @@ if (takeaways) {
     }
   };
 
-  // 7. CLOSE TABLE & PAYMENT SUCCESS
   const handlePaymentSuccess = async (isZeroPayment = false) => {
     if (!selectedTable) return;
     const tableId = selectedTable.id;
@@ -636,7 +622,6 @@ if (takeaways) {
     const { subTotal, autoDiscount, finalTotal } = getTableRecap(tableId);
 
     try {
-      // Update Status Order menjadi Lunas & Completed
       const { error: orderErr } = await supabase
         .from('orders')
         .update({
@@ -651,15 +636,12 @@ if (takeaways) {
 
       if (orderErr) throw orderErr;
 
-      // Tutup Sesi Meja
       if (sessionId) {
         await supabase.from('table_sessions').update({ status: 'closed' }).eq('id', sessionId);
       }
 
-      // Set Status Meja Kembali Available
       await supabase.from('tables').update({ status: 'available' }).eq('id', tableId);
 
-      // Kosongkan Cart Lokal
       setCurrentCart(prev => {
         const n = { ...prev };
         delete n[tableId];
@@ -680,7 +662,8 @@ if (takeaways) {
       alert('Gagal menutup meja: ' + err.message);
     }
   };
-  // --- 5. Alur Operasional Takeaway (CONNECTED TO SUPABASE) ---
+
+  // --- 5. Alur Operasional Takeaway ---
   const handleAddToTakeawayCart = (menuItem) => {
     const existingIndex = takeawayCart.findIndex(item => item.id === menuItem.id);
     if (existingIndex > -1) {
@@ -696,7 +679,6 @@ if (takeaways) {
     setTakeawayCart(takeawayCart.filter(item => item.id !== itemId));
   };
 
-  // FITUR 3: CONFIRM ORDER TAKEAWAY (SUPABASE REALTIME)
   const handleConfirmTakeawayOrder = async () => {
     if (takeawayCart.length === 0) return alert('Keranjang Takeaway kosong!');
 
@@ -713,7 +695,6 @@ if (takeaways) {
     const autoDiscount = calculateAutoDiscount(takeawayCart);
     const totalAmount = Math.max(0, subTotal - autoDiscount);
 
-    // 1. Simpan Order Utama Takeaway ke Supabase
     const { data: orderData, error: orderErr } = await supabase
       .from('orders')
       .insert([{
@@ -732,7 +713,6 @@ if (takeaways) {
 
     if (orderErr) return alert('Gagal menyimpan order takeaway: ' + orderErr.message);
 
-    // 2. Simpan Item Pesanan
     const itemsToInsert = takeawayCart.map(item => ({
       order_id: orderData.id,
       menu_id: item.id,
@@ -754,7 +734,6 @@ if (takeaways) {
     alert(`Order ${generatedOrderNo} Berhasil Dikonfirmasi & Dicetak ke Dapur! Silakan buat orderan berikutnya.`);
   };
 
-  // FITUR 4: CONFIRM PAYMENT TAKEAWAY (SUPABASE REALTIME)
   const handlePayTakeaway = async (order) => {
     const { error } = await supabase
       .from('orders')
@@ -768,7 +747,6 @@ if (takeaways) {
     alert(`Pembayaran Order ${order.orderNo} Sukses & Struk Dicetak! Status: Menunggu Driver/Pelanggan Mengambil.`);
   };
 
-  // FITUR 5: SELESAIKAN ORDER TAKEAWAY (SUPABASE REALTIME)
   const handleCompleteTakeaway = async (orderId) => {
     if (confirm('Selesaikan & keluarkan orderan ini dari daftar antrean?')) {
       const { error } = await supabase
