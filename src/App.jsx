@@ -399,6 +399,17 @@ export default function App() {
     setDiscountForm({ id: null, menuId: '', minQty: 1, discountAmount: 0 });
   };
 
+// Handler untuk mengisi form saat tombol Edit Promo diklik
+  const handleEditDiscountClick = (rule) => {
+    setDiscountForm({
+      id: rule.id,
+      menuId: rule.menuId,
+      minQty: rule.minQty,
+      discountAmount: rule.discountAmount
+    });
+    setIsEditingDiscount(true);
+  };
+  
   const handleDeleteDiscountRule = async (id) => {
     if (confirm('Hapus rule promo ini?')) {
       const { error } = await supabase.from('discount_rules').delete().eq('id', id);
@@ -912,9 +923,9 @@ export default function App() {
             </div>
           </div>
 
-          {/* 3. Kelola Promo Diskon Otomatis */}
+{/* 3. Kelola Promo Diskon Otomatis */}
           <div style={styles.ownerCard}>
-            <h3>Pengaturan Rule Promo Diskon Otomatis</h3>
+            <h3>{isEditingDiscount ? 'Edit Rule Promo Diskon' : 'Pengaturan Rule Promo Diskon Otomatis'}</h3>
             <form onSubmit={handleSaveDiscountRule} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '16px' }}>
               <select 
                 value={discountForm.menuId} 
@@ -946,7 +957,21 @@ export default function App() {
                   style={{ ...styles.inputField, width: '140px' }}
                 />
               </div>
-              <button type="submit" style={styles.primaryBtn}>+ Simpan Rule Promo</button>
+              <button type="submit" style={{ ...styles.primaryBtn, background: isEditingDiscount ? '#f59e0b' : '#3b82f6' }}>
+                {isEditingDiscount ? 'Simpan Promo' : '+ Simpan Rule Promo'}
+              </button>
+              {isEditingDiscount && (
+                <button 
+                  type="button" 
+                  style={styles.dangerOutlineBtn} 
+                  onClick={() => { 
+                    setIsEditingDiscount(false); 
+                    setDiscountForm({ id: null, menuId: '', minQty: 1, discountAmount: 0 }); 
+                  }}
+                >
+                  Batal
+                </button>
+              )}
             </form>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -958,6 +983,12 @@ export default function App() {
                     <div style={{ flex: 1 }}>
                       Beli <strong>{r.menuName}</strong> qty min <strong>{r.minQty}x</strong> 👉 Diskon Otomatis <strong>Rp {r.discountAmount.toLocaleString()}</strong> (Berlaku Kelipatan)
                     </div>
+                    <button 
+                      style={{ ...styles.roleBtn, color: '#f59e0b', marginRight: '8px' }} 
+                      onClick={() => handleEditDiscountClick(r)}
+                    >
+                      Edit
+                    </button>
                     <button style={styles.deleteBtn} onClick={() => handleDeleteDiscountRule(r.id)}>Hapus</button>
                   </div>
                 ))
@@ -967,6 +998,7 @@ export default function App() {
 
         </div>
       ) : (
+      
         /* Mode Kasir */
         <div style={styles.mainLayout}>
           
