@@ -111,6 +111,11 @@ export default function App() {
     };
   }, []);
 
+  // Re-fetch orders ketika discountRules terupdate agar recalculation promo takeaway langsung tercermin
+  useEffect(() => {
+    fetchActiveOrders();
+  }, [discountRules]);
+
   const fetchTables = async () => {
     const { data, error } = await supabase.from('tables').select('*').order('id', { ascending: true });
     if (!error && data) setTables(data);
@@ -200,23 +205,31 @@ export default function App() {
       .order('created_at', { ascending: false });
 
     if (takeaways) {
-      const formattedTakeaway = takeaways.map(t => ({
-        id: t.id,
-        orderNo: t.order_no,
-        platform: t.platform,
-        customerName: t.customer_name || 'Pelanggan',
-        subTotal: Number(t.subtotal || 0),
-        discount: Number(t.discount || 0),
-        total: Number(t.total_amount || 0),
-        isPaid: Boolean(t.is_paid),
-        time: new Date(t.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-        items: (t.order_items || []).map(it => ({
+      const formattedTakeaway = takeaways.map(t => {
+        const items = (t.order_items || []).map(it => ({
           id: it.menu_id,
           name: it.menu_name,
           price: Number(it.price),
           qty: Number(it.qty)
-        }))
-      }));
+        }));
+        
+        const subTotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
+        const discount = calculateAutoDiscount(items);
+        const total = Math.max(0, subTotal - discount);
+
+        return {
+          id: t.id,
+          orderNo: t.order_no,
+          platform: t.platform,
+          customerName: t.customer_name || 'Pelanggan',
+          subTotal,
+          discount,
+          total,
+          isPaid: Boolean(t.is_paid),
+          time: new Date(t.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+          items
+        };
+      });
       setTakeawayOrders(formattedTakeaway);
     }
   };
@@ -741,7 +754,12 @@ export default function App() {
   const handlePayTakeaway = async (order) => {
     const { error } = await supabase
       .from('orders')
-      .update({ is_paid: true })
+      .update({
+        subtotal: order.subTotal,
+        discount: order.discount,
+        total_amount: order.total,
+        is_paid: true
+      })
       .eq('id', order.id);
 
     if (error) return alert('Gagal konfirmasi pembayaran: ' + error.message);
@@ -1221,7 +1239,7 @@ export default function App() {
                         <div style={{ borderTop: '1px solid #334155', paddingTop: '6px', fontSize: '13px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', color: '#9ca3af', marginBottom: '2px' }}>
                             <span>Subtotal:</span>
-                            <span>Rp {(order.subTotal || order.total + (order.discount || 0)).toLocaleString()}</span>
+                            <span>Rp {order.subTotal.toLocaleString()}</span>
                           </div>
                           
                           {order.discount > 0 && (
@@ -1353,7 +1371,7 @@ export default function App() {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#9ca3af', marginBottom: '4px' }}>
               <span>Subtotal:</span>
-              <span>Rp {(selectedTakeawayOrder.subTotal || selectedTakeawayOrder.total + (selectedTakeawayOrder.discount || 0)).toLocaleString()}</span>
+              <span>Rp {selectedTakeawayOrder.subTotal.toLocaleString()}</span>
             </div>
 
             {selectedTakeawayOrder.discount > 0 && (
