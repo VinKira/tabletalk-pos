@@ -1,4 +1,4 @@
-import { QRCodeSVG } from 'qrcode.react';
+import { QRCodeSVG } from 'https://esm.sh/qrcode.react@4.2.0';
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
