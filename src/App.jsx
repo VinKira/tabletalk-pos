@@ -55,22 +55,7 @@ export default function App() {
   const [confirmedOrders, setConfirmedOrders] = useState({}); // { [tableId]: [batches] }
   const [takeawayOrders, setTakeawayOrders] = useState([]); // [array of takeaway orders]
 
-  // Fetch Data Awal & Realtime Subscription Supabase
-  useEffect(() => {
-    fetchTables();
-    fetchMenuList();
-    fetchDiscountRules();
-    fetchActiveOrders();
-
-    // 1. Listen Perubahan Meja Realtime
-    const tableChannel = supabase
-      .channel('public:tables')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, () => {
-        fetchTables();
-      })
-      .subscribe();
-
-    // Fungsi untuk download QR Code Meja (Laptop / HP / Tablet)
+  // Handler Download QR Code Meja (Diletakkan di top-level komponen)
   const handleDownloadQR = (tableNumber) => {
     const svgElement = document.getElementById(`qr-svg-${tableNumber}`);
     if (!svgElement) return;
@@ -98,6 +83,21 @@ export default function App() {
 
     img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
   };
+
+  // Fetch Data Awal & Realtime Subscription Supabase
+  useEffect(() => {
+    fetchTables();
+    fetchMenuList();
+    fetchDiscountRules();
+    fetchActiveOrders();
+
+    // 1. Listen Perubahan Meja Realtime
+    const tableChannel = supabase
+      .channel('public:tables')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, () => {
+        fetchTables();
+      })
+      .subscribe();
 
     // 2. Listen Perubahan Menu Realtime
     const menuChannel = supabase
@@ -429,7 +429,6 @@ export default function App() {
     setDiscountForm({ id: null, menuId: '', minQty: 1, discountAmount: 0 });
   };
 
-// Handler untuk mengisi form saat tombol Edit Promo diklik
   const handleEditDiscountClick = (rule) => {
     setDiscountForm({
       id: rule.id,
@@ -464,13 +463,11 @@ export default function App() {
     setSelectedTable(table);
   };
 
-// 1. OPEN TABLE DINE-IN
   const handleOpenTable = async () => {
     if (!selectedTable) return;
     const tableId = selectedTable.id;
 
     try {
-      // Buat Table Session Baru
       const { data: sessionData, error: sessionErr } = await supabase
         .from('table_sessions')
         .insert([{ table_id: tableId, status: 'open' }])
@@ -479,7 +476,6 @@ export default function App() {
 
       if (sessionErr) throw sessionErr;
 
-      // Buat Order Dine-In Utama
       const { error: orderErr } = await supabase
         .from('orders')
         .insert([{
@@ -491,7 +487,6 @@ export default function App() {
 
       if (orderErr) throw orderErr;
 
-      // Update Status Meja
       const { error: tableErr } = await supabase
         .from('tables')
         .update({ status: 'occupied' })
@@ -508,7 +503,6 @@ export default function App() {
     }
   };
 
-  // 2. CANCEL OPEN TABLE
   const handleCancelOpenTable = async () => {
     if (!selectedTable) return;
     const tableId = selectedTable.id;
@@ -524,7 +518,6 @@ export default function App() {
 
       await supabase.from('tables').update({ status: 'available' }).eq('id', tableId);
 
-      // Reset Draft Cart Lokal Meja Ini
       setCurrentCart(prev => {
         const updated = { ...prev };
         delete updated[tableId];
@@ -540,7 +533,6 @@ export default function App() {
     }
   };
 
-  // 3. CART HANDLERS
   const handleAddToCart = (menuItem) => {
     if (!selectedTable || selectedTable.status !== 'occupied') return;
     const tableId = selectedTable.id;
@@ -567,7 +559,6 @@ export default function App() {
     setCurrentCart(prev => ({ ...prev, [tableId]: cart.filter(item => item.id !== itemId) }));
   };
 
-  // 4. CONFIRM ORDER DINE-IN
   const handleConfirmOrder = async () => {
     if (!selectedTable) return;
     const tableId = selectedTable.id;
@@ -575,7 +566,6 @@ export default function App() {
     if (cart.length === 0) return alert('Keranjang pesanan masih kosong!');
 
     try {
-      // Ambil Active Order ID dengan limit 1 agar tidak crash jika data ganda
       const { data: activeOrders, error: orderErr } = await supabase
         .from('orders')
         .select('id')
@@ -593,7 +583,6 @@ export default function App() {
 
       const activeOrderId = activeOrders[0].id;
 
-      // Buat Order Batch Baru
       const { data: batchData, error: batchErr } = await supabase
         .from('order_batches')
         .insert([{ order_id: activeOrderId }])
@@ -602,7 +591,6 @@ export default function App() {
 
       if (batchErr) throw batchErr;
 
-      // Masukkan Item Pesanan ke Order Items
       const itemsToInsert = cart.map(item => ({
         order_id: activeOrderId,
         batch_id: batchData.id,
@@ -616,7 +604,6 @@ export default function App() {
       const { error: itemsErr } = await supabase.from('order_items').insert(itemsToInsert);
       if (itemsErr) throw itemsErr;
 
-      // Kosongkan Draft Cart Meja Ini
       setCurrentCart(prev => ({ ...prev, [tableId]: [] }));
       fetchActiveOrders();
 
@@ -627,7 +614,6 @@ export default function App() {
     }
   };
 
-  // 5. RECAP DINE-IN
   const getTableRecap = (tableId) => {
     const batches = confirmedOrders[tableId] || [];
     const recapMap = {};
@@ -650,7 +636,6 @@ export default function App() {
     return { recapList, subTotal, autoDiscount, finalTotal, batches };
   };
 
-  // 6. TRIGGER CLOSE TABLE BUTTON
   const handleCloseTableClick = () => {
     if (!selectedTable) return;
     const { finalTotal, batches } = getTableRecap(selectedTable.id);
@@ -665,7 +650,6 @@ export default function App() {
     }
   };
 
-  // 7. CLOSE TABLE & PAYMENT SUCCESS
   const handlePaymentSuccess = async (isZeroPayment = false) => {
     if (!selectedTable) return;
     const tableId = selectedTable.id;
@@ -673,7 +657,6 @@ export default function App() {
     const { subTotal, autoDiscount, finalTotal } = getTableRecap(tableId);
 
     try {
-      // Update Status Order menjadi Lunas & Completed
       const { error: orderErr } = await supabase
         .from('orders')
         .update({
@@ -688,15 +671,12 @@ export default function App() {
 
       if (orderErr) throw orderErr;
 
-      // Tutup Sesi Meja
       if (sessionId) {
         await supabase.from('table_sessions').update({ status: 'closed' }).eq('id', sessionId);
       }
 
-      // Set Status Meja Kembali Available
       await supabase.from('tables').update({ status: 'available' }).eq('id', tableId);
 
-      // Kosongkan Cart Lokal
       setCurrentCart(prev => {
         const n = { ...prev };
         delete n[tableId];
@@ -717,6 +697,7 @@ export default function App() {
       alert('Gagal menutup meja: ' + err.message);
     }
   };
+
   // --- 5. Alur Operasional Takeaway (CONNECTED TO SUPABASE) ---
   const handleAddToTakeawayCart = (menuItem) => {
     const existingIndex = takeawayCart.findIndex(item => item.id === menuItem.id);
@@ -733,7 +714,6 @@ export default function App() {
     setTakeawayCart(takeawayCart.filter(item => item.id !== itemId));
   };
 
-  // FITUR 3: CONFIRM ORDER TAKEAWAY (SUPABASE REALTIME)
   const handleConfirmTakeawayOrder = async () => {
     if (takeawayCart.length === 0) return alert('Keranjang Takeaway kosong!');
 
@@ -750,7 +730,6 @@ export default function App() {
     const autoDiscount = calculateAutoDiscount(takeawayCart);
     const totalAmount = Math.max(0, subTotal - autoDiscount);
 
-    // 1. Simpan Order Utama Takeaway ke Supabase
     const { data: orderData, error: orderErr } = await supabase
       .from('orders')
       .insert([{
@@ -769,7 +748,6 @@ export default function App() {
 
     if (orderErr) return alert('Gagal menyimpan order takeaway: ' + orderErr.message);
 
-    // 2. Simpan Item Pesanan
     const itemsToInsert = takeawayCart.map(item => ({
       order_id: orderData.id,
       menu_id: item.id,
@@ -791,7 +769,6 @@ export default function App() {
     alert(`Order ${generatedOrderNo} Berhasil Dikonfirmasi & Dicetak ke Dapur! Silakan buat orderan berikutnya.`);
   };
 
-  // FITUR 4: CONFIRM PAYMENT TAKEAWAY (SUPABASE REALTIME)
   const handlePayTakeaway = async (order) => {
     const { error } = await supabase
       .from('orders')
@@ -810,7 +787,6 @@ export default function App() {
     alert(`Pembayaran Order ${order.orderNo} Sukses & Struk Dicetak! Status: Menunggu Driver/Pelanggan Mengambil.`);
   };
 
-  // FITUR 5: SELESAIKAN ORDER TAKEAWAY (SUPABASE REALTIME)
   const handleCompleteTakeaway = async (orderId) => {
     if (confirm('Selesaikan & keluarkan orderan ini dari daftar antrean?')) {
       const { error } = await supabase
@@ -889,42 +865,40 @@ export default function App() {
               )}
             </form>
 
-<div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '12px' }}>
-  {tables.map(t => {
-    // URL publik yang akan dibuka pelanggan via QR
-    const tableQrUrl = `${window.location.origin}?table=${t.id}`;
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '12px' }}>
+              {tables.map(t => {
+                const tableQrUrl = `${window.location.origin}?table=${t.id}`;
 
-    return (
-      <div key={t.id} style={{ ...styles.cartRow, flexDirection: 'column', alignItems: 'center', padding: '12px', gap: '10px' }}>
-        <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <strong>{t.number}</strong>
-          <div>
-            <button style={{ ...styles.roleBtn, color: '#f59e0b', padding: '2px 6px' }} onClick={() => handleEditTableClick(t)}>Edit</button>
-            <button style={{ ...styles.deleteBtn, padding: '2px 6px' }} onClick={() => handleDeleteTable(t.id)}>Hapus</button>
-          </div>
-        </div>
+                return (
+                  <div key={t.id} style={{ ...styles.cartRow, flexDirection: 'column', alignItems: 'center', padding: '12px', gap: '10px' }}>
+                    <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <strong>{t.number}</strong>
+                      <div>
+                        <button style={{ ...styles.roleBtn, color: '#f59e0b', padding: '2px 6px' }} onClick={() => handleEditTableClick(t)}>Edit</button>
+                        <button style={{ ...styles.deleteBtn, padding: '2px 6px' }} onClick={() => handleDeleteTable(t.id)}>Hapus</button>
+                      </div>
+                    </div>
 
-        {/* Komponen QR Code SVG */}
-        <div style={{ background: '#fff', padding: '8px', borderRadius: '8px', display: 'flex', justifyContent: 'center' }}>
-          <QRCodeSVG 
-            id={`qr-svg-${t.number}`}
-            value={tableQrUrl}
-            size={120}
-            level="H"
-            includeMargin={true}
-          />
-        </div>
+                    <div style={{ background: '#fff', padding: '8px', borderRadius: '8px', display: 'flex', justifyContent: 'center' }}>
+                      <QRCodeSVG 
+                        id={`qr-svg-${t.number}`}
+                        value={tableQrUrl}
+                        size={120}
+                        level="H"
+                        includeMargin={true}
+                      />
+                    </div>
 
-        <button 
-          type="button"
-          style={{ ...styles.primaryBtn, width: '100%', padding: '6px', fontSize: '12px', background: '#10b981' }}
-          onClick={() => handleDownloadQR(t.number)}
-        >
-          📥 Download QR Code
-        </button>
-      </div>
-    );
-  })}
+                    <button 
+                      type="button"
+                      style={{ ...styles.primaryBtn, width: '100%', padding: '6px', fontSize: '12px', background: '#10b981' }}
+                      onClick={() => handleDownloadQR(t.number)}
+                    >
+                      📥 Download QR Code
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -981,7 +955,7 @@ export default function App() {
             </div>
           </div>
 
-{/* 3. Kelola Promo Diskon Otomatis */}
+          {/* 3. Kelola Promo Diskon Otomatis */}
           <div style={styles.ownerCard}>
             <h3>{isEditingDiscount ? 'Edit Rule Promo Diskon' : 'Pengaturan Rule Promo Diskon Otomatis'}</h3>
             <form onSubmit={handleSaveDiscountRule} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '16px' }}>
@@ -1056,10 +1030,8 @@ export default function App() {
 
         </div>
       ) : (
-      
         /* Mode Kasir */
         <div style={styles.mainLayout}>
-          
           {posMode === 'dine-in' ? (
             /* ================= DINE-IN MODE ================= */
             <>
