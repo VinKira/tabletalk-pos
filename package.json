@@ -13,7 +13,8 @@
     "@supabase/supabase-js": "^2.112.4",
     "lucide-react": "^1.34.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "qrcode.react": "^4.2.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
