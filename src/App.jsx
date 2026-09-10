@@ -1,3 +1,4 @@
+import { QRCodeSVG } from 'qrcode.react';
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 
@@ -68,6 +69,35 @@ export default function App() {
         fetchTables();
       })
       .subscribe();
+
+    // Fungsi untuk download QR Code Meja (Laptop / HP / Tablet)
+  const handleDownloadQR = (tableNumber) => {
+    const svgElement = document.getElementById(`qr-svg-${tableNumber}`);
+    if (!svgElement) return;
+
+    const svgData = new XMLSerializer().serializeToString(svgElement);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+
+    img.onload = () => {
+      canvas.width = img.width + 40;  // Padding border
+      canvas.height = img.height + 40;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 20, 20);
+
+      const pngUrl = canvas.toDataURL('image/png');
+      const downloadLink = document.createElement('a');
+      downloadLink.href = pngUrl;
+      downloadLink.download = `QR_${tableNumber.replace(/\s+/g, '_')}.png`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+    };
+
+    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+  };
 
     // 2. Listen Perubahan Menu Realtime
     const menuChannel = supabase
@@ -859,14 +889,42 @@ export default function App() {
               )}
             </form>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
-              {tables.map(t => (
-                <div key={t.id} style={styles.cartRow}>
-                  <div style={{ flex: 1 }}><strong>{t.number}</strong></div>
-                  <button style={{ ...styles.roleBtn, color: '#f59e0b', marginRight: '4px' }} onClick={() => handleEditTableClick(t)}>Edit</button>
-                  <button style={styles.deleteBtn} onClick={() => handleDeleteTable(t.id)}>Hapus</button>
-                </div>
-              ))}
+<div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '12px' }}>
+  {tables.map(t => {
+    // URL publik yang akan dibuka pelanggan via QR
+    const tableQrUrl = `${window.location.origin}?table=${t.id}`;
+
+    return (
+      <div key={t.id} style={{ ...styles.cartRow, flexDirection: 'column', alignItems: 'center', padding: '12px', gap: '10px' }}>
+        <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <strong>{t.number}</strong>
+          <div>
+            <button style={{ ...styles.roleBtn, color: '#f59e0b', padding: '2px 6px' }} onClick={() => handleEditTableClick(t)}>Edit</button>
+            <button style={{ ...styles.deleteBtn, padding: '2px 6px' }} onClick={() => handleDeleteTable(t.id)}>Hapus</button>
+          </div>
+        </div>
+
+        {/* Komponen QR Code SVG */}
+        <div style={{ background: '#fff', padding: '8px', borderRadius: '8px', display: 'flex', justifyContent: 'center' }}>
+          <QRCodeSVG 
+            id={`qr-svg-${t.number}`}
+            value={tableQrUrl}
+            size={120}
+            level="H"
+            includeMargin={true}
+          />
+        </div>
+
+        <button 
+          type="button"
+          style={{ ...styles.primaryBtn, width: '100%', padding: '6px', fontSize: '12px', background: '#10b981' }}
+          onClick={() => handleDownloadQR(t.number)}
+        >
+          📥 Download QR Code
+        </button>
+      </div>
+    );
+  })}
             </div>
           </div>
 
