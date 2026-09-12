@@ -867,7 +867,7 @@ export default function App() {
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '12px' }}>
               {tables.map(t => {
-                const tableQrUrl = `${window.location.origin}?table=${t.id}`;
+                const tableQrUrl = `${window.location.origin}/order?table=${t.id}`;
 
                 return (
                   <div key={t.id} style={{ ...styles.cartRow, flexDirection: 'column', alignItems: 'center', padding: '12px', gap: '10px' }}>
