@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from './supabaseClient';
+import CustomerOrder from './CustomerOrder';
 
 export default function App() {
   // --- Global Fullscreen Fix ---
@@ -829,99 +830,10 @@ export default function App() {
     ? menuList 
     : menuList.filter(m => m.category === selectedCategoryFilter);
 
-  // ================= TAMPILAN PAGE SELF ORDER PELANGGAN (VIA QR) =================
-  if (selfOrderTableId) {
-    const currentTableObj = tables.find(t => String(t.id) === String(selfOrderTableId));
-    const tableDisplayName = currentTableObj ? currentTableObj.number : `Meja #${selfOrderTableId}`;
-    const selfOrderSubtotal = selfOrderCart.reduce((sum, item) => sum + (item.price * item.qty), 0);
-
-    return (
-      <div style={{ ...styles.appContainer, backgroundColor: '#0f172a', overflowY: 'auto' }}>
-        <header style={{ ...styles.header, justifyContent: 'center' }}>
-          <h1 style={styles.headerTitle}>📱 Self Order - {tableDisplayName}</h1>
-        </header>
-
-        <div style={{ padding: '16px', maxWidth: '600px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
-          {/* Filter Bar Categories */}
-          <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '12px' }}>
-            <button
-              onClick={() => setSelectedCategoryFilter('Semua')}
-              style={{
-                ...styles.roleBtn,
-                background: selectedCategoryFilter === 'Semua' ? '#2563eb' : '#1e293b',
-                color: '#fff',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              Semua
-            </button>
-            {categories.map(c => (
-              <button
-                key={c.id}
-                onClick={() => setSelectedCategoryFilter(c.name)}
-                style={{
-                  ...styles.roleBtn,
-                  background: selectedCategoryFilter === c.name ? '#2563eb' : '#1e293b',
-                  color: '#fff',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                {c.name}
-              </button>
-            ))}
-          </div>
-
-          {/* List Menu untuk Customer */}
-          <h3 style={styles.sectionTitle}>Pilih Menu</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '10px', marginTop: '8px' }}>
-            {filteredMenuList.map(menu => (
-              <div key={menu.id} style={styles.menuCard} onClick={() => handleAddSelfOrderCart(menu)}>
-                <div>
-                  <div style={{ fontWeight: '600', fontSize: '14px' }}>{menu.name}</div>
-                  <div style={{ fontSize: '11px', color: '#60a5fa', margin: '2px 0' }}>{menu.category}</div>
-                  <div style={{ fontSize: '13px', color: '#9ca3af' }}>Rp {Number(menu.price).toLocaleString()}</div>
-                </div>
-                <button style={styles.addMenuBtn}>+</button>
-              </div>
-            ))}
-          </div>
-
-          {/* Draft Cart Customer */}
-          <div style={{ ...styles.ownerCard, marginTop: '20px' }}>
-            <h3>🛒 Keranjang Pesanan Anda</h3>
-            {selfOrderCart.length === 0 ? (
-              <p style={styles.mutedText}>Keranjang Anda masih kosong. Silakan pilih menu di atas.</p>
-            ) : (
-              <div>
-                {selfOrderCart.map(item => (
-                  <div key={item.id} style={{ ...styles.cartRow, marginBottom: '8px' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: '500', fontSize: '14px' }}>{item.name}</div>
-                      <small style={{ color: '#9ca3af' }}>Rp {Number(item.price).toLocaleString()} x {item.qty}</small>
-                    </div>
-                    <div style={{ fontWeight: '600', marginRight: '8px' }}>Rp {(item.price * item.qty).toLocaleString()}</div>
-                    <button style={styles.deleteBtn} onClick={() => handleRemoveSelfOrderCart(item.id)}>✕</button>
-                  </div>
-                ))}
-
-                <div style={{ borderTop: '1px solid #334155', paddingTop: '10px', marginTop: '12px', display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
-                  <span>Total Tagihan:</span>
-                  <span style={{ color: '#34d399' }}>Rp {selfOrderSubtotal.toLocaleString()}</span>
-                </div>
-
-                <button 
-                  style={{ ...styles.confirmOrderBtn, marginTop: '16px', padding: '12px', fontSize: '15px' }}
-                  onClick={handleSelfOrderSubmit}
-                >
-                  🚀 Kirim Pesanan ke Dapur
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
+// ================= TAMPILAN PAGE SELF ORDER PELANGGAN (VIA QR) =================
+if (selfOrderTableId) {
+  return <CustomerOrder tableId={selfOrderTableId} />;
+}
 
   // ================= TAMPILAN DASHBOARD POS KASIR & OWNER =================
   return (
