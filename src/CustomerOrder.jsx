@@ -502,8 +502,10 @@ const styles = {
   },
   menuImage: {
     width: '100%',
-    height: '100%',
+    height: '110px',
     objectFit: 'cover',
+    borderRadius: '10px',
+    marginBottom: '8px',
   },
   placeholderImage: {
     width: '100%',
