@@ -371,8 +371,8 @@ const styles = {
     gap: '10px',
   },
 logoImage: {
-    width: '50px',
-    height: '50px',
+    width: '80px',
+    height: '80px',
     objectFit: 'contain',
   },
   brandTitle: {
@@ -442,8 +442,10 @@ logoImage: {
     display: 'flex',
     gap: '10px',
     overflowX: 'auto',
+    paddingLeft: '16px',   // Memberi ruang agar "Semua" tidak mepet/terpotong di kiri
+    paddingRight: '16px',  // Memberi ruang saat di-scroll sampai paling kanan
     paddingBottom: '16px',
-    justifyContent: 'center',
+    justifyContent: 'flex-start', // Memastikan urutan scroll mulai dari paling kiri
     position: 'relative',
     zIndex: 2,
     scrollbarWidth: 'none',
