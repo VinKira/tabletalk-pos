@@ -158,7 +158,7 @@ export default function CustomerOrder({ tableId }) {
         </div>
         <div style={styles.tableBadge}>
           <span style={styles.pulseDot} />
-          MEJA {tableNumber || `#${tableId}`}
+          {tableNumber || `#${tableId}`}
         </div>
       </header>
 
@@ -371,8 +371,8 @@ const styles = {
     gap: '10px',
   },
 logoImage: {
-    width: '36px',
-    height: '36px',
+    width: '50px',
+    height: '50px',
     objectFit: 'contain',
   },
   brandTitle: {
@@ -400,6 +400,7 @@ logoImage: {
     alignItems: 'center',
     gap: '6px',
     backgroundColor: 'rgba(5, 17, 13, 0.6)',
+    marginLeft: 'auto', // Memindah badge ke ujung kanan
   },
   pulseDot: {
     width: '6px',
