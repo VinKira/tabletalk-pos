@@ -163,7 +163,7 @@ export default function CustomerOrder({ tableId }) {
 
       {/* Tagline Banner */}
       <div style={styles.topBarSub}>
-        GOOD COFFEE &nbsp;•&nbsp; GREAT GAMES &nbsp;•&nbsp; BETTER TALKS
+        GOOD DINING &nbsp;•&nbsp; GREAT GAME &nbsp;•&nbsp; BETTER TALK
       </div>
 
       {/* Hero Welcome */}
