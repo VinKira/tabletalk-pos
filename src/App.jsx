@@ -415,13 +415,13 @@ export default function App() {
 
       // Upload file ke bucket 'menu_images'
       const { error: uploadError } = await supabase.storage
-        .from('menu_images')
+        .from('menu-images')
         .upload(filePath, file);
 
       if (uploadError) throw uploadError;
 
       // Ambil Public URL
-      const { data } = supabase.storage.from('menu_images').getPublicUrl(filePath);
+      const { data } = supabase.storage.from('menu-images').getPublicUrl(filePath);
       setMenuForm((prev) => ({ ...prev, image_url: data.publicUrl }));
     } catch (error) {
       alert('Gagal mengunggah gambar: ' + error.message);
@@ -482,8 +482,8 @@ const handleDeleteMenu = async (id) => {
     // Cari menu untuk hapus file gambar di storage (opsional)
     const targetMenu = menuList.find(m => m.id === id);
     if (targetMenu?.image_url) {
-      const path = targetMenu.image_url.split('/menu_images/')[1];
-      if (path) await supabase.storage.from('menu_images').remove([path]);
+      const path = targetMenu.image_url.split('/menu-images/')[1];
+      if (path) await supabase.storage.from('menu-images').remove([path]);
     }
 
     const { error } = await supabase.from('menu_list').delete().eq('id', id);
