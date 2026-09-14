@@ -204,7 +204,7 @@ export default function CustomerOrder({ tableId }) {
           return (
             <div key={menu.id} style={styles.menuCard}>
               
-              {/* Menu Image Container (Rasio 5:4) */}
+      {/* Menu Image Container (Rasio 5:4) */}
               <div style={styles.imageWrapper}>
                 {menu.image_url ? (
                   <img src={menu.image_url} alt={menu.name} style={styles.menuImage} />
@@ -212,9 +212,6 @@ export default function CustomerOrder({ tableId }) {
                   <div style={styles.placeholderImage}>
                     <span>{menu.name.substring(0, 2).toUpperCase()}</span>
                   </div>
-                )}
-                <span style={styles.menuCategoryBadge}>{menu.category || 'MENU'}</span>
-              </div>
                 )}
                 <span style={styles.menuCategoryBadge}>{menu.category || 'MENU'}</span>
               </div>
