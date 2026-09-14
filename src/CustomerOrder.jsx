@@ -152,7 +152,6 @@ export default function CustomerOrder({ tableId }) {
         <div style={styles.brandWrapper}>
           <img src="/Logogold-nobg.png" alt="Table Talk Logo" style={styles.logoImage} />
           <div>
-            <h1 style={styles.brandTitle}>Table Talk</h1>
             <span style={styles.brandTagline}>MAHJONG CAFE & LOUNGE</span>
           </div>
         </div>
@@ -204,7 +203,8 @@ export default function CustomerOrder({ tableId }) {
           const cartItem = cart.find((i) => i.id === menu.id);
           return (
             <div key={menu.id} style={styles.menuCard}>
-              {/* Menu Image Container */}
+              
+              {/* Menu Image Container (Rasio 5:4) */}
               <div style={styles.imageWrapper}>
                 {menu.image_url ? (
                   <img src={menu.image_url} alt={menu.name} style={styles.menuImage} />
@@ -212,6 +212,9 @@ export default function CustomerOrder({ tableId }) {
                   <div style={styles.placeholderImage}>
                     <span>{menu.name.substring(0, 2).toUpperCase()}</span>
                   </div>
+                )}
+                <span style={styles.menuCategoryBadge}>{menu.category || 'MENU'}</span>
+              </div>
                 )}
                 <span style={styles.menuCategoryBadge}>{menu.category || 'MENU'}</span>
               </div>
@@ -384,7 +387,7 @@ logoImage: {
     lineHeight: '1.1',
   },
   brandTagline: {
-    fontSize: '8px',
+    fontSize: '16px',
     letterSpacing: '2px',
     color: '#d4af37',
     display: 'block',
@@ -442,8 +445,8 @@ logoImage: {
     display: 'flex',
     gap: '10px',
     overflowX: 'auto',
-    paddingLeft: '16px',   // Memberi ruang agar "Semua" tidak mepet/terpotong di kiri
-    paddingRight: '16px',  // Memberi ruang saat di-scroll sampai paling kanan
+    paddingLeft: '8px',   // Memberi ruang agar "Semua" tidak mepet/terpotong di kiri
+    paddingRight: '8px',  // Memberi ruang saat di-scroll sampai paling kanan
     paddingBottom: '16px',
     justifyContent: 'flex-start', // Memastikan urutan scroll mulai dari paling kiri
     position: 'relative',
@@ -488,7 +491,7 @@ logoImage: {
   },
   imageWrapper: {
     width: '100%',
-    height: '120px',
+    aspectRatio: '5/4', // Mengunci rasio panjang banding lebar 5:4
     borderRadius: '12px',
     overflow: 'hidden',
     position: 'relative',
@@ -497,10 +500,9 @@ logoImage: {
   },
   menuImage: {
     width: '100%',
-    height: '110px',
+    height: '100%', // Mengisi penuh frame 5:4
     objectFit: 'cover',
-    borderRadius: '10px',
-    marginBottom: '8px',
+    display: 'block',
   },
   placeholderImage: {
     width: '100%',
