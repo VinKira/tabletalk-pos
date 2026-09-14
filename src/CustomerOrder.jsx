@@ -147,10 +147,10 @@ export default function CustomerOrder({ tableId }) {
       {/* Dynamic Background Lighting Effects */}
       <div style={styles.bgGlowCenter} />
 
-      {/* Header */}
+  {/* Header */}
       <header style={styles.header}>
         <div style={styles.brandWrapper}>
-          <div style={styles.logoMark}>TT</div>
+          <img src="/Logogold-nobg.png" alt="Table Talk Logo" style={styles.logoImage} />
           <div>
             <h1 style={styles.brandTitle}>Table Talk</h1>
             <span style={styles.brandTagline}>MAHJONG CAFE & LOUNGE</span>
@@ -370,18 +370,10 @@ const styles = {
     alignItems: 'center',
     gap: '10px',
   },
-  logoMark: {
+logoImage: {
     width: '36px',
     height: '36px',
-    border: '1px solid #d4af37',
-    color: '#d4af37',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontWeight: 'bold',
-    fontSize: '14px',
-    borderRadius: '4px',
-    boxShadow: 'inset 0 0 8px rgba(212, 175, 55, 0.2)',
+    objectFit: 'contain',
   },
   brandTitle: {
     fontSize: '18px',
