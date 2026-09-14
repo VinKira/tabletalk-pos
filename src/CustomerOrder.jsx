@@ -384,7 +384,7 @@ logoImage: {
     lineHeight: '1.1',
   },
   brandTagline: {
-    fontSize: '10px',
+    fontSize: '8px',
     letterSpacing: '2px',
     color: '#d4af37',
     display: 'block',
