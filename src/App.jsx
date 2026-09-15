@@ -166,10 +166,20 @@ export default function App() {
     fetchActiveOrders();
   }, [discountRules]);
 
-  const fetchTables = async () => {
-    const { data, error } = await supabase.from('tables').select('*').order('id', { ascending: true });
-    if (!error && data) setTables(data);
-  };
+const fetchTables = async () => {
+  const { data, error } = await supabase.from('tables').select('*').order('id', { ascending: true });
+  if (!error && data) {
+    setTables(data);
+
+    // KUNCI PERBAIKAN:
+    // Update selectedTable otomatis agar kasir langsung membaca status meja terbaru
+    setSelectedTable(prevSelected => {
+      if (!prevSelected) return null;
+      const updatedCurrentTable = data.find(t => Number(t.id) === Number(prevSelected.id));
+      return updatedCurrentTable || prevSelected;
+    });
+  }
+};
 
   const fetchCategories = async () => {
     const { data, error } = await supabase.from('categories').select('*').order('id', { ascending: true });
