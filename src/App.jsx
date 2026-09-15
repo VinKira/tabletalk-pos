@@ -96,6 +96,20 @@ export default function App() {
     img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
   };
 
+  const calculateAutoDiscount = (recapList, rules = discountRules) => {
+    let totalDiscount = 0;
+    if (!rules || rules.length === 0) return 0;
+    
+    recapList.forEach(item => {
+      const matchedRules = rules.filter(r => Number(r.menuId) === Number(item.id) && item.qty >= r.minQty);
+      matchedRules.forEach(r => {
+        const multiplier = Math.floor(item.qty / r.minQty);
+        totalDiscount += multiplier * r.discountAmount;
+      });
+    });
+    return totalDiscount;
+  };
+
   // Fetch Data Awal & Realtime Subscription Supabase
   useEffect(() => {
     fetchTables();
@@ -162,10 +176,6 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => {
-    fetchActiveOrders();
-  }, [discountRules]);
-
   const fetchTables = async () => {
     const { data, error } = await supabase.from('tables').select('*').order('id', { ascending: true });
     if (!error && data) {
@@ -205,11 +215,13 @@ export default function App() {
         discountAmount: Number(item.discount_amount)
       }));
       setDiscountRules(formatted);
+      // Panggil fetchActiveOrders secara eksplisit dengan rule terbaru
+      fetchActiveOrders(formatted);
     }
   };
 
   // Synchronize Active Orders (Dine-In & Takeaway) from Supabase
-  const fetchActiveOrders = async () => {
+  const fetchActiveOrders = async (currentRules = discountRules) => {
     const { data: openSessions } = await supabase
       .from('table_sessions')
       .select('*')
@@ -248,7 +260,7 @@ export default function App() {
           time: new Date(b.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
           type: 'Order',
           items: (b.order_items || []).map(it => ({
-            id: it.menu_id,
+            id: Number(it.menu_id),
             name: it.menu_name,
             price: Number(it.price),
             qty: Number(it.qty)
@@ -272,14 +284,16 @@ export default function App() {
     if (takeaways) {
       const formattedTakeaway = takeaways.map(t => {
         const items = (t.order_items || []).map(it => ({
-          id: it.menu_id,
+          id: Number(it.menu_id),
           name: it.menu_name,
           price: Number(it.price),
           qty: Number(it.qty)
         }));
         
         const subTotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
-        const discount = calculateAutoDiscount(items);
+        // Menghitung diskon berdasarkan DB jika ada, atau recalculate dengan aturan promo aktif
+        const calculatedDiscount = calculateAutoDiscount(items, currentRules);
+        const discount = t.discount && t.discount > 0 ? Number(t.discount) : calculatedDiscount;
         const total = Math.max(0, subTotal - discount);
 
         return {
@@ -356,7 +370,7 @@ export default function App() {
     localStorage.setItem('pos_draft_takeaway_cart', JSON.stringify(takeawayCart));
   }, [takeawayCart]);
 
-  // --- 1. Manajemen Meja CRUD (FIXED CASCADE DELETE) ---
+  // --- 1. Manajemen Meja CRUD ---
   const handleSaveTable = async (e) => {
     e.preventDefault();
     if (!tableForm.number.trim()) return;
@@ -375,11 +389,9 @@ export default function App() {
 
   const handleEditTableClick = (t) => { setTableForm(t); setIsEditingTable(true); };
 
-  // FIX UNTUK BUG HAPUS MEJA: Menghapus relasi child data terlebih dahulu sebelum menghapus meja
   const handleDeleteTable = async (id) => {
     if (confirm('Yakin ingin menghapus meja ini beserta seluruh riwayat transaksinya?')) {
       try {
-        // 1. Ambil semua ID order terkait meja ini
         const { data: relatedOrders } = await supabase
           .from('orders')
           .select('id')
@@ -387,21 +399,13 @@ export default function App() {
 
         if (relatedOrders && relatedOrders.length > 0) {
           const orderIds = relatedOrders.map(o => o.id);
-
-          // 2. Hapus order_items terkait
           await supabase.from('order_items').delete().in('order_id', orderIds);
-
-          // 3. Hapus order_batches terkait
           await supabase.from('order_batches').delete().in('order_id', orderIds);
-
-          // 4. Hapus orders terkait
           await supabase.from('orders').delete().eq('table_id', id);
         }
 
-        // 5. Hapus table_sessions terkait
         await supabase.from('table_sessions').delete().eq('table_id', id);
 
-        // 6. Hapus Meja
         const { error } = await supabase.from('tables').delete().eq('id', id);
         if (error) throw error;
 
@@ -563,18 +567,6 @@ export default function App() {
     }
   };
 
-  const calculateAutoDiscount = (recapList) => {
-    let totalDiscount = 0;
-    recapList.forEach(item => {
-      const matchedRules = discountRules.filter(r => r.menuId === item.id && item.qty >= r.minQty);
-      matchedRules.forEach(r => {
-        const multiplier = Math.floor(item.qty / r.minQty);
-        totalDiscount += multiplier * r.discountAmount;
-      });
-    });
-    return totalDiscount;
-  };
-
   // --- 5. Alur Operasional POS (Dine-In) ---
   const handleSelectTable = (table) => { setSelectedTable(table); };
 
@@ -696,18 +688,18 @@ export default function App() {
 
     batches.forEach(b => {
       (b.items || []).forEach(it => {
-        if (recapMap[it.menu_name || it.name]) {
-          recapMap[it.menu_name || it.name].qty += it.qty;
+        if (recapMap[it.name]) {
+          recapMap[it.name].qty += it.qty;
         } else {
-          recapMap[it.menu_name || it.name] = { ...it, name: it.menu_name || it.name };
+          recapMap[it.name] = { ...it, name: it.name };
         }
       });
     });
 
     const recapList = Object.values(recapMap);
     const subTotal = recapList.reduce((sum, item) => sum + (item.price * item.qty), 0);
-    const autoDiscount = calculateAutoDiscount ? calculateAutoDiscount(recapList) : 0;
-    const finalTotal = subTotal - autoDiscount;
+    const autoDiscount = calculateAutoDiscount(recapList);
+    const finalTotal = Math.max(0, subTotal - autoDiscount);
 
     return { recapList, subTotal, autoDiscount, finalTotal, batches };
   };
