@@ -166,26 +166,23 @@ export default function App() {
     fetchActiveOrders();
   }, [discountRules]);
 
-const fetchTables = async () => {
-  const { data, error } = await supabase.from('tables').select('*').order('id', { ascending: true });
-  if (!error && data) {
-    setTables(data);
+  const fetchTables = async () => {
+    const { data, error } = await supabase.from('tables').select('*').order('id', { ascending: true });
+    if (!error && data) {
+      setTables(data);
 
-    // KUNCI PERBAIKAN:
-    // Update selectedTable otomatis agar kasir langsung membaca status meja terbaru
-    setSelectedTable(prevSelected => {
-      if (!prevSelected) return null;
-      const updatedCurrentTable = data.find(t => Number(t.id) === Number(prevSelected.id));
-      return updatedCurrentTable || prevSelected;
-    });
-  }
-};
+      setSelectedTable(prevSelected => {
+        if (!prevSelected) return null;
+        const updatedCurrentTable = data.find(t => Number(t.id) === Number(prevSelected.id));
+        return updatedCurrentTable || prevSelected;
+      });
+    }
+  };
 
   const fetchCategories = async () => {
     const { data, error } = await supabase.from('categories').select('*').order('id', { ascending: true });
     if (!error && data) {
       setCategories(data);
-      // fallback default category form jika form kosong
       if (data.length > 0 && !menuForm.category) {
         setMenuForm(prev => ({ ...prev, category: data[0].name }));
       }
@@ -309,16 +306,15 @@ const fetchTables = async () => {
   const [categoryForm, setCategoryForm] = useState({ id: null, name: '' });
   const [isEditingCategory, setIsEditingCategory] = useState(false);
 
-  // State Form Owner Mode (Update menuForm dengan image_url)
   const [menuForm, setMenuForm] = useState({ id: null, name: '', price: '', category: '', image_url: '' });
   const [isEditingMenu, setIsEditingMenu] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false); // State loading upload gambar
+  const [uploadingImage, setUploadingImage] = useState(false);
   
   const [discountForm, setDiscountForm] = useState({ id: null, menuId: '', minQty: 1, discountAmount: 0 });
   const [isEditingDiscount, setIsEditingDiscount] = useState(false);
 
   // --- POS Mode Selection ---
-  const [posMode, setPosMode] = useState('dine-in'); // 'dine-in' | 'takeaway'
+  const [posMode, setPosMode] = useState('dine-in');
 
   // --- Dine-In State ---
   const [selectedTable, setSelectedTable] = useState(null);
@@ -360,7 +356,7 @@ const fetchTables = async () => {
     localStorage.setItem('pos_draft_takeaway_cart', JSON.stringify(takeawayCart));
   }, [takeawayCart]);
 
-  // --- 1. Manajemen Meja CRUD ---
+  // --- 1. Manajemen Meja CRUD (FIXED CASCADE DELETE) ---
   const handleSaveTable = async (e) => {
     e.preventDefault();
     if (!tableForm.number.trim()) return;
@@ -378,15 +374,46 @@ const fetchTables = async () => {
   };
 
   const handleEditTableClick = (t) => { setTableForm(t); setIsEditingTable(true); };
+
+  // FIX UNTUK BUG HAPUS MEJA: Menghapus relasi child data terlebih dahulu sebelum menghapus meja
   const handleDeleteTable = async (id) => {
-    if (confirm('Yakin ingin menghapus meja ini?')) {
-      const { error } = await supabase.from('tables').delete().eq('id', id);
-      if (error) alert('Gagal hapus meja: ' + error.message);
-      else { if (selectedTable?.id === id) setSelectedTable(null); fetchTables(); }
+    if (confirm('Yakin ingin menghapus meja ini beserta seluruh riwayat transaksinya?')) {
+      try {
+        // 1. Ambil semua ID order terkait meja ini
+        const { data: relatedOrders } = await supabase
+          .from('orders')
+          .select('id')
+          .eq('table_id', id);
+
+        if (relatedOrders && relatedOrders.length > 0) {
+          const orderIds = relatedOrders.map(o => o.id);
+
+          // 2. Hapus order_items terkait
+          await supabase.from('order_items').delete().in('order_id', orderIds);
+
+          // 3. Hapus order_batches terkait
+          await supabase.from('order_batches').delete().in('order_id', orderIds);
+
+          // 4. Hapus orders terkait
+          await supabase.from('orders').delete().eq('table_id', id);
+        }
+
+        // 5. Hapus table_sessions terkait
+        await supabase.from('table_sessions').delete().eq('table_id', id);
+
+        // 6. Hapus Meja
+        const { error } = await supabase.from('tables').delete().eq('id', id);
+        if (error) throw error;
+
+        if (selectedTable?.id === id) setSelectedTable(null);
+        fetchTables();
+      } catch (error) {
+        alert('Gagal hapus meja: ' + error.message);
+      }
     }
   };
 
-  // --- 2. Manajemen Kategori CRUD (OWNER MODE NEW) ---
+  // --- 2. Manajemen Kategori CRUD ---
   const handleSaveCategory = async (e) => {
     e.preventDefault();
     if (!categoryForm.name.trim()) return alert('Nama Kategori wajib diisi!');
@@ -412,7 +439,7 @@ const fetchTables = async () => {
     }
   };
 
-// --- Handler Upload Gambar ke Supabase Storage ---
+  // --- Handler Upload Gambar ke Supabase Storage ---
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -423,14 +450,12 @@ const fetchTables = async () => {
       const fileName = `${Date.now()}.${fileExt}`;
       const filePath = `menus/${fileName}`;
 
-      // Upload file ke bucket 'menu_images'
       const { error: uploadError } = await supabase.storage
         .from('menu-images')
         .upload(filePath, file);
 
       if (uploadError) throw uploadError;
 
-      // Ambil Public URL
       const { data } = supabase.storage.from('menu-images').getPublicUrl(filePath);
       setMenuForm((prev) => ({ ...prev, image_url: data.publicUrl }));
     } catch (error) {
@@ -440,66 +465,65 @@ const fetchTables = async () => {
     }
   };
   
-// --- 3. Manajemen Menu CRUD ---
-const handleSaveMenu = async (e) => {
-  e.preventDefault();
-  if (!menuForm.name || !menuForm.price) return alert('Nama dan Harga wajib diisi!');
-  const categoryToSave = menuForm.category || (categories[0]?.name || 'Makanan');
-  const parsedPrice = Number(menuForm.price);
+  // --- 3. Manajemen Menu CRUD ---
+  const handleSaveMenu = async (e) => {
+    e.preventDefault();
+    if (!menuForm.name || !menuForm.price) return alert('Nama dan Harga wajib diisi!');
+    const categoryToSave = menuForm.category || (categories[0]?.name || 'Makanan');
+    const parsedPrice = Number(menuForm.price);
 
-  if (isEditingMenu) {
-    const { error } = await supabase
-      .from('menu_list')
-      .update({ 
-        name: menuForm.name, 
-        price: parsedPrice, 
-        category: categoryToSave,
-        image_url: menuForm.image_url 
-      })
-      .eq('id', menuForm.id);
+    if (isEditingMenu) {
+      const { error } = await supabase
+        .from('menu_list')
+        .update({ 
+          name: menuForm.name, 
+          price: parsedPrice, 
+          category: categoryToSave,
+          image_url: menuForm.image_url 
+        })
+        .eq('id', menuForm.id);
 
-    if (error) alert('Gagal update menu: ' + error.message);
-    else setIsEditingMenu(false);
-  } else {
-    const { error } = await supabase
-      .from('menu_list')
-      .insert([{ 
-        name: menuForm.name, 
-        price: parsedPrice, 
-        category: categoryToSave,
-        image_url: menuForm.image_url 
-      }]);
+      if (error) alert('Gagal update menu: ' + error.message);
+      else setIsEditingMenu(false);
+    } else {
+      const { error } = await supabase
+        .from('menu_list')
+        .insert([{ 
+          name: menuForm.name, 
+          price: parsedPrice, 
+          category: categoryToSave,
+          image_url: menuForm.image_url 
+        }]);
 
-    if (error) alert('Gagal tambah menu: ' + error.message);
-  }
-
-  setMenuForm({ id: null, name: '', price: '', category: categories[0]?.name || '', image_url: '' });
-};
-
-const handleEditMenuClick = (item) => { 
-  setMenuForm({
-    id: item.id,
-    name: item.name,
-    price: item.price,
-    category: item.category,
-    image_url: item.image_url || ''
-  }); 
-  setIsEditingMenu(true); 
-};
-
-const handleDeleteMenu = async (id) => {
-  if (confirm('Yakin ingin menghapus menu ini?')) {
-    // Cari menu untuk hapus file gambar di storage (opsional)
-    const targetMenu = menuList.find(m => m.id === id);
-    if (targetMenu?.image_url) {
-      const path = targetMenu.image_url.split('/menu-images/')[1];
-      if (path) await supabase.storage.from('menu-images').remove([path]);
+      if (error) alert('Gagal tambah menu: ' + error.message);
     }
 
-    const { error } = await supabase.from('menu_list').delete().eq('id', id);
-    if (error) alert('Gagal hapus menu: ' + error.message);
-  }
-};
+    setMenuForm({ id: null, name: '', price: '', category: categories[0]?.name || '', image_url: '' });
+  };
+
+  const handleEditMenuClick = (item) => { 
+    setMenuForm({
+      id: item.id,
+      name: item.name,
+      price: item.price,
+      category: item.category,
+      image_url: item.image_url || ''
+    }); 
+    setIsEditingMenu(true); 
+  };
+
+  const handleDeleteMenu = async (id) => {
+    if (confirm('Yakin ingin menghapus menu ini?')) {
+      const targetMenu = menuList.find(m => m.id === id);
+      if (targetMenu?.image_url) {
+        const path = targetMenu.image_url.split('/menu-images/')[1];
+        if (path) await supabase.storage.from('menu-images').remove([path]);
+      }
+
+      const { error } = await supabase.from('menu_list').delete().eq('id', id);
+      if (error) alert('Gagal hapus menu: ' + error.message);
+    }
+  };
 
   // --- 4. Manajemen Promo Diskon CRUD ---
   const handleSaveDiscountRule = async (e) => {
@@ -804,7 +828,7 @@ const handleDeleteMenu = async (id) => {
     }
   };
 
-  // --- 7. SELF ORDER CUSTOMER LOGIC (MEMASUKKAN KE LIST MEJA & CETAK REALTIME KE DAPUR) ---
+  // --- 7. SELF ORDER CUSTOMER LOGIC ---
   const handleAddSelfOrderCart = (menuItem) => {
     const existingIndex = selfOrderCart.findIndex(item => item.id === menuItem.id);
     if (existingIndex > -1) {
@@ -823,7 +847,6 @@ const handleDeleteMenu = async (id) => {
     const tableId = Number(selfOrderTableId);
 
     try {
-      // 1. Dapatkan atau buat sesi aktif meja
       let activeOrderId = null;
       const { data: existingActiveOrders } = await supabase
         .from('orders')
@@ -836,7 +859,6 @@ const handleDeleteMenu = async (id) => {
       if (existingActiveOrders && existingActiveOrders.length > 0) {
         activeOrderId = existingActiveOrders[0].id;
       } else {
-        // Meja belum dibuka, buat Sesi & Order baru secara otomatis
         const { data: sessionData, error: sErr } = await supabase
           .from('table_sessions')
           .insert([{ table_id: tableId, status: 'open' }])
@@ -855,7 +877,6 @@ const handleDeleteMenu = async (id) => {
         activeOrderId = newOrderData.id;
       }
 
-      // 2. Buat Batch Baru di Dapur (Realtime trigger cetak printer dapur)
       const { data: batchData, error: bErr } = await supabase
         .from('order_batches')
         .insert([{ order_id: activeOrderId }])
@@ -863,7 +884,6 @@ const handleDeleteMenu = async (id) => {
         .single();
       if (bErr) throw bErr;
 
-      // 3. Masukkan item pesanan
       const itemsToInsert = selfOrderCart.map(item => ({
         order_id: activeOrderId,
         batch_id: batchData.id,
@@ -892,15 +912,14 @@ const handleDeleteMenu = async (id) => {
   const { recapList, subTotal, autoDiscount, batches } = activeTableId ? getTableRecap(activeTableId) : { recapList: [], subTotal: 0, autoDiscount: 0, batches: [] };
   const finalTotal = Math.max(0, subTotal - autoDiscount);
 
-  // Filter Menu Sesuai Kategori
   const filteredMenuList = selectedCategoryFilter === 'Semua' 
     ? menuList 
     : menuList.filter(m => m.category === selectedCategoryFilter);
 
-// ================= TAMPILAN PAGE SELF ORDER PELANGGAN (VIA QR) =================
-if (selfOrderTableId) {
-  return <CustomerOrder tableId={selfOrderTableId} />;
-}
+  // ================= TAMPILAN PAGE SELF ORDER PELANGGAN (VIA QR) =================
+  if (selfOrderTableId) {
+    return <CustomerOrder tableId={selfOrderTableId} />;
+  }
 
   // ================= TAMPILAN DASHBOARD POS KASIR & OWNER =================
   return (
@@ -998,7 +1017,7 @@ if (selfOrderTableId) {
             </div>
           </div>
 
-          {/* 2. Kelola Kategori Menu CRUD (FITUR BARU) */}
+          {/* 2. Kelola Kategori Menu CRUD */}
           <div style={styles.ownerCard}>
             <h3>{isEditingCategory ? 'Edit Kategori Menu' : 'Tambah Kategori Menu Baru'}</h3>
             <form onSubmit={handleSaveCategory} style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
@@ -1030,95 +1049,93 @@ if (selfOrderTableId) {
             </div>
           </div>
 
-{/* 3. Kelola Menu CRUD */}
-<div style={styles.ownerCard}>
-  <h3>{isEditingMenu ? 'Edit Menu' : 'Tambah Menu Baru'}</h3>
-  <form onSubmit={handleSaveMenu} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '16px' }}>
-    <input 
-      type="text" 
-      placeholder="Nama Menu" 
-      value={menuForm.name} 
-      onChange={(e) => setMenuForm({ ...menuForm, name: e.target.value })}
-      style={styles.inputField}
-    />
-    <input 
-      type="number" 
-      placeholder="Harga (Rp)" 
-      value={menuForm.price} 
-      onChange={(e) => setMenuForm({ ...menuForm, price: e.target.value })}
-      style={styles.inputField}
-    />
-    <select 
-      value={menuForm.category} 
-      onChange={(e) => setMenuForm({ ...menuForm, category: e.target.value })}
-      style={styles.inputField}
-    >
-      {categories.map(c => (
-        <option key={c.id} value={c.name}>{c.name}</option>
-      ))}
-    </select>
+          {/* 3. Kelola Menu CRUD */}
+          <div style={styles.ownerCard}>
+            <h3>{isEditingMenu ? 'Edit Menu' : 'Tambah Menu Baru'}</h3>
+            <form onSubmit={handleSaveMenu} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '16px' }}>
+              <input 
+                type="text" 
+                placeholder="Nama Menu" 
+                value={menuForm.name} 
+                onChange={(e) => setMenuForm({ ...menuForm, name: e.target.value })}
+                style={styles.inputField}
+              />
+              <input 
+                type="number" 
+                placeholder="Harga (Rp)" 
+                value={menuForm.price} 
+                onChange={(e) => setMenuForm({ ...menuForm, price: e.target.value })}
+                style={styles.inputField}
+              />
+              <select 
+                value={menuForm.category} 
+                onChange={(e) => setMenuForm({ ...menuForm, category: e.target.value })}
+                style={styles.inputField}
+              >
+                {categories.map(c => (
+                  <option key={c.id} value={c.name}>{c.name}</option>
+                ))}
+              </select>
 
-    {/* Input File Gambar & Preview */}
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-      <input 
-        type="file" 
-        accept="image/*" 
-        onChange={handleImageUpload} 
-        disabled={uploadingImage}
-        style={{ fontSize: '12px', color: '#94a3b8' }}
-      />
-      {uploadingImage && <span style={{ fontSize: '12px', color: '#f59e0b' }}>Uploading...</span>}
-      {menuForm.image_url && (
-        <img 
-          src={menuForm.image_url} 
-          alt="Preview" 
-          style={{ width: '36px', height: '36px', borderRadius: '6px', objectFit: 'cover' }} 
-        />
-      )}
-    </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  onChange={handleImageUpload} 
+                  disabled={uploadingImage}
+                  style={{ fontSize: '12px', color: '#94a3b8' }}
+                />
+                {uploadingImage && <span style={{ fontSize: '12px', color: '#f59e0b' }}>Uploading...</span>}
+                {menuForm.image_url && (
+                  <img 
+                    src={menuForm.image_url} 
+                    alt="Preview" 
+                    style={{ width: '36px', height: '36px', borderRadius: '6px', objectFit: 'cover' }} 
+                  />
+                )}
+              </div>
 
-    <button type="submit" style={{ ...styles.primaryBtn, background: isEditingMenu ? '#f59e0b' : '#3b82f6' }}>
-      {isEditingMenu ? 'Simpan Menu' : '+ Tambah Menu'}
-    </button>
+              <button type="submit" style={{ ...styles.primaryBtn, background: isEditingMenu ? '#f59e0b' : '#3b82f6' }}>
+                {isEditingMenu ? 'Simpan Menu' : '+ Tambah Menu'}
+              </button>
 
-    {isEditingMenu && (
-      <button 
-        type="button" 
-        style={styles.dangerOutlineBtn} 
-        onClick={() => { 
-          setIsEditingMenu(false); 
-          setMenuForm({ id: null, name: '', price: '', category: categories[0]?.name || '', image_url: '' }); 
-        }}
-      >
-        Batal
-      </button>
-    )}
-  </form>
+              {isEditingMenu && (
+                <button 
+                  type="button" 
+                  style={styles.dangerOutlineBtn} 
+                  onClick={() => { 
+                    setIsEditingMenu(false); 
+                    setMenuForm({ id: null, name: '', price: '', category: categories[0]?.name || '', image_url: '' }); 
+                  }}
+                >
+                  Batal
+                </button>
+              )}
+            </form>
 
-  {/* List Menu dengan Tampilan Foto */}
-  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-    {menuList.length === 0 ? (
-      <p style={styles.mutedText}>Belum ada menu di database Supabase.</p>
-    ) : (
-      menuList.map(item => (
-        <div key={item.id} style={styles.cartRow}>
-          {item.image_url && (
-            <img 
-              src={item.image_url} 
-              alt={item.name} 
-              style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover', marginRight: '10px' }} 
-            />
-          )}
-          <div style={{ flex: 1 }}>
-            <strong>{item.name}</strong> - <span style={{ color: '#34d399' }}>Rp {Number(item.price).toLocaleString()}</span> <span style={{ color: '#60a5fa' }}>({item.category})</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {menuList.length === 0 ? (
+                <p style={styles.mutedText}>Belum ada menu di database Supabase.</p>
+              ) : (
+                menuList.map(item => (
+                  <div key={item.id} style={styles.cartRow}>
+                    {item.image_url && (
+                      <img 
+                        src={item.image_url} 
+                        alt={item.name} 
+                        style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover', marginRight: '10px' }} 
+                      />
+                    )}
+                    <div style={{ flex: 1 }}>
+                      <strong>{item.name}</strong> - <span style={{ color: '#34d399' }}>Rp {Number(item.price).toLocaleString()}</span> <span style={{ color: '#60a5fa' }}>({item.category})</span>
+                    </div>
+                    <button style={{ ...styles.roleBtn, color: '#f59e0b', marginRight: '8px' }} onClick={() => handleEditMenuClick(item)}>Edit</button>
+                    <button style={styles.deleteBtn} onClick={() => handleDeleteMenu(item.id)}>Hapus</button>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
-          <button style={{ ...styles.roleBtn, color: '#f59e0b', marginRight: '8px' }} onClick={() => handleEditMenuClick(item)}>Edit</button>
-          <button style={styles.deleteBtn} onClick={() => handleDeleteMenu(item.id)}>Hapus</button>
-        </div>
-      ))
-    )}
-  </div>
-</div>
 
           {/* 4. Kelola Promo Diskon Otomatis */}
           <div style={styles.ownerCard}>
