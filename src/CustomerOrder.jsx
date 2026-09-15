@@ -76,12 +76,14 @@ export default function CustomerOrder({ tableId }) {
     setIsSubmitting(true);
 
     try {
+      // PERBAIKAN MEJA 4: Pastikan tableId dikonversi ke Number secara tegas
+      const numericTableId = Number(tableId);
       let activeOrderId = null;
 
       const { data: activeOrders } = await supabase
         .from('orders')
         .select('id')
-        .eq('table_id', tableId)
+        .eq('table_id', numericTableId)
         .eq('order_type', 'dine-in')
         .eq('status', 'active')
         .limit(1);
@@ -91,19 +93,19 @@ export default function CustomerOrder({ tableId }) {
       } else {
         const { data: sessionData, error: sErr } = await supabase
           .from('table_sessions')
-          .insert([{ table_id: tableId, status: 'open' }])
+          .insert([{ table_id: numericTableId, status: 'open' }])
           .select()
           .single();
         if (sErr) throw sErr;
 
         const { data: newOrderData, error: oErr } = await supabase
           .from('orders')
-          .insert([{ session_id: sessionData.id, table_id: tableId, order_type: 'dine-in', status: 'active' }])
+          .insert([{ session_id: sessionData.id, table_id: numericTableId, order_type: 'dine-in', status: 'active' }])
           .select()
           .single();
         if (oErr) throw oErr;
 
-        await supabase.from('tables').update({ status: 'occupied' }).eq('id', tableId);
+        await supabase.from('tables').update({ status: 'occupied' }).eq('id', numericTableId);
         activeOrderId = newOrderData.id;
       }
 
