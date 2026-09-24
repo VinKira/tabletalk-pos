@@ -220,7 +220,7 @@ export default function App() {
     }
   };
 
-  // Synchronize Active Orders (Dine-In & Takeaway) from Supabase
+// Synchronize Active Orders (Dine-In & Takeaway) from Supabase
   const fetchActiveOrders = async (currentRules = discountRules) => {
     const { data: openSessions } = await supabase
       .from('table_sessions')
@@ -291,9 +291,12 @@ export default function App() {
         }));
         
         const subTotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
-        // Menghitung diskon berdasarkan DB jika ada, atau recalculate dengan aturan promo aktif
+        
+        // HITUNG RE-CALCULATE DISKON REALTIME:
+        // Jika order BELUM lunas, selalu hitung ulang diskon mengikuti aturan promo aktif saat ini.
+        // Jika order SUDAH lunas, gunakan nilai diskon histori yang ada di DB.
         const calculatedDiscount = calculateAutoDiscount(items, currentRules);
-        const discount = t.discount && t.discount > 0 ? Number(t.discount) : calculatedDiscount;
+        const discount = t.is_paid ? (Number(t.discount) || 0) : calculatedDiscount;
         const total = Math.max(0, subTotal - discount);
 
         return {
