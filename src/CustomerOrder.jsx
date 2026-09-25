@@ -10,7 +10,12 @@ export default function CustomerOrder({ tableId }) {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
-
+  
+  // State untuk Modal Pilihan Ice & Sugar Level
+  const [selectedMenuForOption, setSelectedMenuForOption] = useState(null);
+  const [selectedIce, setSelectedIce] = useState('Normal Ice');
+  const [selectedSugar, setSelectedSugar] = useState('Normal Sugar');
+  
   useEffect(() => {
     fetchTableInfo();
     fetchCategories();
@@ -47,15 +52,51 @@ export default function CustomerOrder({ tableId }) {
     if (data) setMenuList(data);
   };
 
-  const handleAddToCart = (menu) => {
-    setCart((prevCart) => {
-      const existing = prevCart.find((item) => item.id === menu.id);
-      if (existing) {
-        return prevCart.map((item) => (item.id === menu.id ? { ...item, qty: item.qty + 1 } : item));
-      }
-      return [...prevCart, { ...menu, qty: 1 }];
-    });
+// Buka Modal Opsi saat tombol "+ Tambah" diklik
+const handleOpenOptionModal = (menu) => {
+  setSelectedMenuForOption(menu);
+  setSelectedIce('Normal Ice');
+  setSelectedSugar('Normal Sugar');
+};
+
+// Tambahkan ke Cart bersama pilihan Ice & Sugar Level
+const handleConfirmAddToCart = () => {
+  if (!selectedMenuForOption) return;
+
+  const itemOption = {
+    ice: selectedIce,
+    sugar: selectedSugar
   };
+
+  setCart((prevCart) => {
+    // Membedakan item cart berdasarkan ID dan varian pilihan
+    const existingIndex = prevCart.findIndex(
+      (item) =>
+        item.id === selectedMenuForOption.id &&
+        item.options?.ice === selectedIce &&
+        item.options?.sugar === selectedSugar
+    );
+
+    if (existingIndex > -1) {
+      return prevCart.map((item, idx) =>
+        idx === existingIndex ? { ...item, qty: item.qty + 1 } : item
+      );
+    }
+
+    return [
+      ...prevCart,
+      {
+        ...selectedMenuForOption,
+        qty: 1,
+        options: itemOption,
+        // Buat unique cart key untuk membedakan varian di UI list
+        cartKey: `${selectedMenuForOption.id}-${selectedIce}-${selectedSugar}`
+      }
+    ];
+  });
+
+  setSelectedMenuForOption(null); // Tutup modal
+};
 
   const handleUpdateQty = (itemId, delta) => {
     setCart((prevCart) =>
@@ -224,18 +265,18 @@ export default function CustomerOrder({ tableId }) {
                 <div style={styles.menuPrice}>Rp {Number(menu.price).toLocaleString('id-ID')}</div>
               </div>
 
-              {/* Action Button */}
-              {cartItem ? (
-                <div style={styles.qtyControlInline}>
-                  <button style={styles.qtyBtnInline} onClick={() => handleUpdateQty(menu.id, -1)}>-</button>
-                  <span style={styles.qtyTextInline}>{cartItem.qty}</span>
-                  <button style={styles.qtyBtnInline} onClick={() => handleUpdateQty(menu.id, 1)}>+</button>
-                </div>
-              ) : (
-                <button style={styles.addBtn} onClick={() => handleAddToCart(menu)}>
-                  + Tambah
-                </button>
-              )}
+            {/* Action Button */}
+            {cartItem ? (
+              <div style={styles.qtyControlInline}>
+                <button style={styles.qtyBtnInline} onClick={() => handleUpdateQty(menu.id, -1)}>-</button>
+                <span style={styles.qtyTextInline}>{cartItem.qty}</span>
+                <button style={styles.qtyBtnInline} onClick={() => handleOpenOptionModal(menu)}>+</button>
+              </div>
+            ) : (
+              <button style={styles.addBtn} onClick={() => handleOpenOptionModal(menu)}>
+                + Tambah
+              </button>
+            )}
             </div>
           );
         })}
@@ -276,14 +317,22 @@ export default function CustomerOrder({ tableId }) {
 
             <div style={styles.drawerBody}>
               {cart.map((item) => (
-                <div key={item.id} style={styles.cartItemRow}>
+                <div key={item.cartKey || item.id} style={styles.cartItemRow}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: '600', fontSize: '14px', color: '#f3e9dc' }}>{item.name}</div>
-                    <div style={{ fontSize: '12px', color: '#889988' }}>
-                      Rp {Number(item.price).toLocaleString('id-ID')}
+                    
+                    {/* TAMBAHKAN BARIS INI */}
+                      {item.options && (
+                        <div style={{ fontSize: '11px', color: '#d4af37', marginTop: '2px' }}>
+                          {item.options.ice} • {item.options.sugar}
+                        </div>
+                      )}
+                    
+                      <div style={{ fontSize: '12px', color: '#889988' }}>
+                        Rp {Number(item.price).toLocaleString('id-ID')}
+                      </div>
                     </div>
-                  </div>
-
+                  
                   <div style={styles.qtyControlInline}>
                     <button style={styles.qtyBtnInline} onClick={() => handleUpdateQty(item.id, -1)}>-</button>
                     <span style={styles.qtyTextInline}>{item.qty}</span>
@@ -328,6 +377,75 @@ export default function CustomerOrder({ tableId }) {
           </div>
         </div>
       )}
+
+      {selectedMenuForOption && (
+        <div style={styles.modalOverlay}>
+          <div style={{ ...styles.drawerCard, maxHeight: 'none' }}>
+            <div style={styles.drawerHeader}>
+              <h3 style={{ margin: 0, fontSize: '18px', color: '#f3e9dc', fontFamily: 'serif' }}>
+                Opsi Minuman
+              </h3>
+              <button style={styles.closeBtn} onClick={() => setSelectedMenuForOption(null)}>✕</button>
+            </div>
+
+            <div style={{ padding: '16px 0' }}>
+              <h4 style={{ margin: '0 0 8px 0', color: '#d4af37', fontSize: '14px' }}>
+                {selectedMenuForOption.name}
+              </h4>
+
+              {/* Ice Level Selection */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '12px', color: '#a3b18a', marginBottom: '8px' }}>
+                  ICE LEVEL
+                </label>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {['Normal Ice', 'Less Ice', 'No Ice'].map((ice) => (
+                    <button
+                      key={ice}
+                      onClick={() => setSelectedIce(ice)}
+                      style={{
+                        ...styles.categoryBtn,
+                        ...(selectedIce === ice ? styles.categoryBtnActive : {}),
+                        fontSize: '12px',
+                        padding: '6px 14px'
+                      }}
+                    >
+                      {ice}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sugar Level Selection */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '12px', color: '#a3b18a', marginBottom: '8px' }}>
+                  SUGAR LEVEL
+                </label>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {['Normal Sugar', 'Less Sugar', 'Extra Sugar'].map((sugar) => (
+                    <button
+                      key={sugar}
+                      onClick={() => setSelectedSugar(sugar)}
+                      style={{
+                        ...styles.categoryBtn,
+                        ...(selectedSugar === sugar ? styles.categoryBtnActive : {}),
+                        fontSize: '12px',
+                        padding: '6px 14px'
+                      }}
+                    >
+                      {sugar}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <button style={styles.submitOrderBtn} onClick={handleConfirmAddToCart}>
+              Tambahkan ke Pesanan
+            </button>
+          </div>
+        </div>
+      )}  
     </div>
   );
 }
