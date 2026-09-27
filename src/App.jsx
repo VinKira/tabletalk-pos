@@ -73,6 +73,20 @@ export default function App() {
   const [posIceOption, setPosIceOption] = useState('Normal Ice');
   const [posSugarOption, setPosSugarOption] = useState('Normal Sugar');
 
+// State Modal Opsi Dine-In
+  const [showPosDineInOptionModal, setShowPosDineInOptionModal] = useState(false);
+  const [posDineInSelectedItem, setPosDineInSelectedItem] = useState(null);
+  const [posDineInIce, setPosDineInIce] = useState('Normal Ice');
+  const [posDineInSugar, setPosDineInSugar] = useState('Normal Sugar');
+
+  // Handler Buka Modal Opsi Dine-In
+  const handleOpenPosDineInOptionModal = (menuItem) => {
+    setPosDineInSelectedItem(menuItem);
+    setPosDineInIce('Normal Ice');
+    setPosDineInSugar('Normal Sugar');
+    setShowPosDineInOptionModal(true);
+  };
+  
   // Buka Modal saat menu diklik di POS Kasir
   const handleOpenPosOptionModal = (menuItem, mode) => {
     setOptionModalItem(menuItem);
@@ -678,6 +692,39 @@ export default function App() {
     }
   };
 
+  const handleConfirmPosDineInAddToCart = () => {
+    if (!posDineInSelectedItem || !selectedTable || selectedTable.status !== 'occupied') return;
+
+    const tableId = selectedTable.id;
+    const cart = currentCart[tableId] || [];
+
+    const itemWithOptions = {
+      ...posDineInSelectedItem,
+      options: {
+        ice: posDineInIce,
+        sugar: posDineInSugar
+      }
+    };
+
+    const existingIndex = cart.findIndex(
+      item => item.id === itemWithOptions.id &&
+              item.options?.ice === posDineInIce &&
+              item.options?.sugar === posDineInSugar
+    );
+
+    if (existingIndex > -1) {
+      const updated = cart.map((item, idx) =>
+        idx === existingIndex ? { ...item, qty: item.qty + 1 } : item
+      );
+      setCurrentCart(prev => ({ ...prev, [tableId]: updated }));
+    } else {
+      setCurrentCart(prev => ({ ...prev, [tableId]: [...cart, { ...itemWithOptions, qty: 1 }] }));
+    }
+
+    setShowPosDineInOptionModal(false);
+    setPosDineInSelectedItem(null);
+  };
+  
   const handleAddToCart = (menuItem) => {
     if (!selectedTable || selectedTable.status !== 'occupied') return;
     const tableId = selectedTable.id;
@@ -1311,7 +1358,7 @@ export default function App() {
                     ) : (
                       <div style={styles.menuGrid}>
                         {menuList.map(menu => (
-                          <div key={menu.id} style={styles.menuCard} onClick={() => handleOpenPosOptionModal(menu, 'dine-in')}>
+                          <div key={menu.id} style={styles.menuCard} onClick={() => handleOpenPosDineInOptionModal(menu)}>
                             <div>
                               <div style={{ fontWeight: '600', fontSize: '14px' }}>{menu.name}</div>
                               <div style={{ fontSize: '11px', color: '#60a5fa', margin: '2px 0' }}>{menu.category}</div>
@@ -1758,6 +1805,67 @@ export default function App() {
                 Batal
               </button>
               <button style={{ ...styles.primaryBtn, flex: 2 }} onClick={handleConfirmPosAddToCart}>
+                Tambahkan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== TAMBAHKAN KODE INI TEPAT DI BAWAHNYA ==================== */}
+      {/* Modal Opsi Dine-In Kasir */}
+      {showPosDineInOptionModal && posDineInSelectedItem && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalCard}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '16px' }}>Pilih Opsi: {posDineInSelectedItem.name}</h3>
+
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Ice Level:</label>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                {['Normal Ice', 'Less Ice', 'No Ice'].map(ice => (
+                  <button
+                    key={ice}
+                    type="button"
+                    onClick={() => setPosDineInIce(ice)}
+                    style={{
+                      ...styles.roleBtn,
+                      background: posDineInIce === ice ? '#3b82f6' : '#0f172a',
+                      color: posDineInIce === ice ? '#fff' : '#94a3b8',
+                      border: '1px solid #334155'
+                    }}
+                  >
+                    {ice}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Sugar Level:</label>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                {['Normal Sugar', 'Less Sugar', 'Extra Sugar'].map(sugar => (
+                  <button
+                    key={sugar}
+                    type="button"
+                    onClick={() => setPosDineInSugar(sugar)}
+                    style={{
+                      ...styles.roleBtn,
+                      background: posDineInSugar === sugar ? '#3b82f6' : '#0f172a',
+                      color: posDineInSugar === sugar ? '#fff' : '#94a3b8',
+                      border: '1px solid #334155'
+                    }}
+                  >
+                    {sugar}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button style={{ ...styles.dangerOutlineBtn, flex: 1 }} onClick={() => setShowPosDineInOptionModal(false)}>
+                Batal
+              </button>
+              <button style={{ ...styles.primaryBtn, flex: 2 }} onClick={handleConfirmPosDineInAddToCart}>
                 Tambahkan
               </button>
             </div>
