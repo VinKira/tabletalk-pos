@@ -11,10 +11,11 @@ export default function CustomerOrder({ tableId }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
   
-  // State untuk Modal Pilihan Ice & Sugar Level
+// State untuk Modal Pilihan Opsi Dinamis & Notes
   const [selectedMenuForOption, setSelectedMenuForOption] = useState(null);
-  const [selectedIce, setSelectedIce] = useState('Normal Ice');
-  const [selectedSugar, setSelectedSugar] = useState('Normal Sugar');
+  const [dynamicOptions, setDynamicOptions] = useState([]);
+  const [selectedOptions, setSelectedOptions] = useState({});
+  const [itemNotes, setItemNotes] = useState('');
   
   useEffect(() => {
     fetchTableInfo();
@@ -53,29 +54,34 @@ export default function CustomerOrder({ tableId }) {
   };
 
 // Buka Modal Opsi saat tombol "+ Tambah" diklik
-const handleOpenOptionModal = (menu) => {
+const handleOpenOptionModal = async (menu) => {
   setSelectedMenuForOption(menu);
-  setSelectedIce('Normal Ice');
-  setSelectedSugar('Normal Sugar');
+  setItemNotes('');
+
+  // Fetch daftar master menu_options dari Supabase
+  const { data: allOptions } = await supabase.from('menu_options').select('*');
+  const catObj = categories.find((c) => c.name === menu.category);
+  const allowed = catObj?.allowed_options || [];
+
+  const filteredOpts = (allOptions || []).filter((o) => allowed.includes(o.title));
+  setDynamicOptions(filteredOpts);
+
+  // Set default pilihan pertama untuk tiap opsi yang tersedia
+  const init = {};
+  filteredOpts.forEach((o) => {
+    if (o.values && o.values.length > 0) init[o.title] = o.values[0];
+  });
+  setSelectedOptions(init);
 };
 
-// Tambahkan ke Cart bersama pilihan Ice & Sugar Level
+// Tambahkan ke Cart bersama pilihan Opsi & Notes
 const handleConfirmAddToCart = () => {
   if (!selectedMenuForOption) return;
 
-  const itemOption = {
-    ice: selectedIce,
-    sugar: selectedSugar
-  };
+  const cartKey = `${selectedMenuForOption.id}-${JSON.stringify(selectedOptions)}-${itemNotes}`;
 
   setCart((prevCart) => {
-    // Membedakan item cart berdasarkan ID dan varian pilihan
-    const existingIndex = prevCart.findIndex(
-      (item) =>
-        item.id === selectedMenuForOption.id &&
-        item.options?.ice === selectedIce &&
-        item.options?.sugar === selectedSugar
-    );
+    const existingIndex = prevCart.findIndex((item) => item.cartKey === cartKey);
 
     if (existingIndex > -1) {
       return prevCart.map((item, idx) =>
@@ -88,9 +94,9 @@ const handleConfirmAddToCart = () => {
       {
         ...selectedMenuForOption,
         qty: 1,
-        options: itemOption,
-        // Buat unique cart key untuk membedakan varian di UI list
-        cartKey: `${selectedMenuForOption.id}-${selectedIce}-${selectedSugar}`
+        options: selectedOptions,
+        notes: itemNotes,
+        cartKey: cartKey
       }
     ];
   });
@@ -112,6 +118,49 @@ const handleConfirmAddToCart = () => {
     );
   };
 
+
+  // ==========================================
+  // 🟢 TEMPATKAN FUNGSI PRINT LABEL DI SINI
+  // ==========================================
+  const printKitchenLabel = (tableName, items) => {
+    const printWindow = window.open('', '_blank', 'width=300,height=400');
+    if (!printWindow) return;
+
+    let html = `
+      <html>
+        <head>
+          <style>
+            body { font-family: monospace; width: 58mm; padding: 4px; margin: 0; font-size: 12px; }
+            .title { text-align: center; font-weight: bold; border-bottom: 1px dashed #000; padding-bottom: 4px; }
+            .item { margin-top: 8px; border-bottom: 1px dotted #ccc; padding-bottom: 4px; }
+            .opt { font-size: 11px; padding-left: 8px; }
+            .note { font-size: 11px; font-weight: bold; padding-left: 8px; }
+          </style>
+        </head>
+        <body>
+          <div class="title">ORDER DAPUR - MEJA ${tableName}</div>
+    `;
+
+    items.forEach((item) => {
+      const optionsText = item.options ? Object.values(item.options).join(' • ') : '';
+      html += `
+        <div class="item">
+          <strong>${item.qty}x ${item.name}</strong>
+          ${optionsText ? `<div class="opt">[ ${optionsText} ]</div>` : ''}
+          ${item.notes ? `<div class="note">* Note: ${item.notes}</div>` : ''}
+        </div>
+      `;
+    });
+
+    html += `</body></html>`;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
+  };
+  
   const handleSubmitOrder = async () => {
     if (cart.length === 0) return;
     setIsSubmitting(true);
@@ -157,7 +206,7 @@ const handleConfirmAddToCart = () => {
         .single();
       if (bErr) throw bErr;
 
-      const itemsToInsert = cart.map((item) => ({
+    const itemsToInsert = cart.map((item) => ({
         order_id: activeOrderId,
         batch_id: batchData.id,
         menu_id: item.id,
@@ -165,11 +214,28 @@ const handleConfirmAddToCart = () => {
         price: item.price,
         qty: item.qty,
         category: item.category || 'Makanan',
+        options: item.options || {}, // <--- Menyimpan JSON Opsi
+        notes: item.notes || ''       // <--- Menyimpan Catatan Pelanggan
       }));
 
       const { error: itemsErr } = await supabase.from('order_items').insert(itemsToInsert);
       if (itemsErr) throw itemsErr;
 
+      // ==========================================
+      // 🟢 PEMANGGILAN FUNGSI PRINT DI SINI
+      // ==========================================
+      printKitchenLabel(tableNumber || tableId, cart);
+
+      setCart([]);
+      setIsCartOpen(false);
+      setOrderSuccess(true);
+    } catch (err) {
+      alert('Gagal mengirim pesanan: ' + err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+      
       setCart([]);
       setIsCartOpen(false);
       setOrderSuccess(true);
@@ -321,12 +387,18 @@ const handleConfirmAddToCart = () => {
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: '600', fontSize: '14px', color: '#f3e9dc' }}>{item.name}</div>
                     
-                    {/* TAMBAHKAN BARIS INI */}
-                      {item.options && (
-                        <div style={{ fontSize: '11px', color: '#d4af37', marginTop: '2px' }}>
-                          {item.options.ice} • {item.options.sugar}
-                        </div>
-                      )}
+                  {/* Render Opsi Dinamis */}
+                  {item.options && Object.keys(item.options).length > 0 && (
+                    <div style={{ fontSize: '11px', color: '#d4af37', marginTop: '2px' }}>
+                      {Object.entries(item.options).map(([k, v]) => `${k}: ${v}`).join(' • ')}
+                    </div>
+                  )}
+                  {/* Render Catatan Khusus */}
+                  {item.notes && (
+                    <div style={{ fontSize: '11px', color: '#a3b18a', fontStyle: 'italic', marginTop: '2px' }}>
+                      Catatan: "{item.notes}"
+                    </div>
+                  )}
                     
                       <div style={{ fontSize: '12px', color: '#889988' }}>
                         Rp {Number(item.price).toLocaleString('id-ID')}
@@ -378,65 +450,67 @@ const handleConfirmAddToCart = () => {
         </div>
       )}
 
-      {selectedMenuForOption && (
+{selectedMenuForOption && (
         <div style={styles.modalOverlay}>
-          <div style={{ ...styles.drawerCard, maxHeight: 'none' }}>
+          <div style={{ ...styles.drawerCard, maxHeight: '85vh', overflowY: 'auto' }}>
             <div style={styles.drawerHeader}>
               <h3 style={{ margin: 0, fontSize: '18px', color: '#f3e9dc', fontFamily: 'serif' }}>
-                Opsi Minuman
+                Detail Pesanan
               </h3>
               <button style={styles.closeBtn} onClick={() => setSelectedMenuForOption(null)}>✕</button>
             </div>
 
             <div style={{ padding: '16px 0' }}>
-              <h4 style={{ margin: '0 0 8px 0', color: '#d4af37', fontSize: '14px' }}>
+              <h4 style={{ margin: '0 0 12px 0', color: '#d4af37', fontSize: '16px' }}>
                 {selectedMenuForOption.name}
               </h4>
 
-              {/* Ice Level Selection */}
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '12px', color: '#a3b18a', marginBottom: '8px' }}>
-                  ICE LEVEL
-                </label>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  {['Normal Ice', 'Less Ice', 'No Ice'].map((ice) => (
-                    <button
-                      key={ice}
-                      onClick={() => setSelectedIce(ice)}
-                      style={{
-                        ...styles.categoryBtn,
-                        ...(selectedIce === ice ? styles.categoryBtnActive : {}),
-                        fontSize: '12px',
-                        padding: '6px 14px'
-                      }}
-                    >
-                      {ice}
-                    </button>
-                  ))}
+              {/* Dynamic Opsi (Ice/Sugar/Lainnya) jika kategori mendukung */}
+              {dynamicOptions.map((opt) => (
+                <div key={opt.id} style={{ marginBottom: '16px' }}>
+                  <label style={{ display: 'block', fontSize: '11px', color: '#a3b18a', marginBottom: '8px', letterSpacing: '1px' }}>
+                    {opt.title.toUpperCase()}
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {opt.values.map((val) => (
+                      <button
+                        key={val}
+                        onClick={() => setSelectedOptions((prev) => ({ ...prev, [opt.title]: val }))}
+                        style={{
+                          ...styles.categoryBtn,
+                          ...(selectedOptions[opt.title] === val ? styles.categoryBtnActive : {}),
+                          fontSize: '12px',
+                          padding: '6px 14px'
+                        }}
+                      >
+                        {val}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              ))}
 
-              {/* Sugar Level Selection */}
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '12px', color: '#a3b18a', marginBottom: '8px' }}>
-                  SUGAR LEVEL
+              {/* Kolom Notes Opsional (Selalu Muncul untuk Semua Menu) */}
+              <div style={{ marginTop: '16px' }}>
+                <label style={{ display: 'block', fontSize: '11px', color: '#a3b18a', marginBottom: '6px' }}>
+                  CATATAN KHUSUS (OPSIONAL)
                 </label>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  {['Normal Sugar', 'Less Sugar', 'Extra Sugar'].map((sugar) => (
-                    <button
-                      key={sugar}
-                      onClick={() => setSelectedSugar(sugar)}
-                      style={{
-                        ...styles.categoryBtn,
-                        ...(selectedSugar === sugar ? styles.categoryBtnActive : {}),
-                        fontSize: '12px',
-                        padding: '6px 14px'
-                      }}
-                    >
-                      {sugar}
-                    </button>
-                  ))}
-                </div>
+                <input
+                  type="text"
+                  placeholder="Contoh: Tanpa tauge, agak pedas, saus dipisah..."
+                  value={itemNotes}
+                  onChange={(e) => setItemNotes(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    backgroundColor: 'rgba(5, 17, 13, 0.8)',
+                    border: '1px solid rgba(212, 175, 55, 0.3)',
+                    borderRadius: '8px',
+                    color: '#f3e9dc',
+                    fontSize: '13px',
+                    boxSizing: 'border-box'
+                  }}
+                />
               </div>
             </div>
 
@@ -445,7 +519,7 @@ const handleConfirmAddToCart = () => {
             </button>
           </div>
         </div>
-      )}  
+      )} 
     </div>
   );
 }
