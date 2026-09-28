@@ -233,16 +233,6 @@ const handleSubmitOrder = async () => {
       setIsSubmitting(false);
     }
   };
-      
-      setCart([]);
-      setIsCartOpen(false);
-      setOrderSuccess(true);
-    } catch (err) {
-      alert('Gagal mengirim pesanan: ' + err.message);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const totalCartCount = cart.reduce((sum, item) => sum + item.qty, 0);
   const cartSubtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
