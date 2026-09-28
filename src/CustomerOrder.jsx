@@ -161,7 +161,7 @@ const handleConfirmAddToCart = () => {
     printWindow.close();
   };
   
-  const handleSubmitOrder = async () => {
+const handleSubmitOrder = async () => {
     if (cart.length === 0) return;
     setIsSubmitting(true);
 
@@ -206,7 +206,7 @@ const handleConfirmAddToCart = () => {
         .single();
       if (bErr) throw bErr;
 
-    const itemsToInsert = cart.map((item) => ({
+      const itemsToInsert = cart.map((item) => ({
         order_id: activeOrderId,
         batch_id: batchData.id,
         menu_id: item.id,
@@ -221,9 +221,7 @@ const handleConfirmAddToCart = () => {
       const { error: itemsErr } = await supabase.from('order_items').insert(itemsToInsert);
       if (itemsErr) throw itemsErr;
 
-      // ==========================================
-      // 🟢 PEMANGGILAN FUNGSI PRINT DI SINI
-      // ==========================================
+      // Pemanggilan cetak dapur
       printKitchenLabel(tableNumber || tableId, cart);
 
       setCart([]);
