@@ -62,6 +62,17 @@ export default function App() {
   const [menuList, setMenuList] = useState([]);
   const [discountRules, setDiscountRules] = useState([]);
 
+  // TAMBAHAN STEP 1: Ice & Sugar Level States
+  const [iceLevels, setIceLevels] = useState([]);
+  const [sugarLevels, setSugarLevels] = useState([]);
+  const [selectedIceCategories, setSelectedIceCategories] = useState([]); // array category_id
+  const [selectedSugarCategories, setSelectedSugarCategories] = useState([]); // array category_id
+
+  const [iceForm, setIceForm] = useState({ id: null, name: '' });
+  const [isEditingIce, setIsEditingIce] = useState(false);
+
+  const [sugarForm, setSugarForm] = useState({ id: null, name: '' });
+  const [isEditingSugar, setIsEditingSugar] = useState(false);
   // --- State Pesanan Supabase Realtime ---
   const [activeSessions, setActiveSessions] = useState({}); // { [tableId]: session_id }
   const [confirmedOrders, setConfirmedOrders] = useState({}); // { [tableId]: [batches] }
@@ -117,7 +128,9 @@ export default function App() {
     fetchMenuList();
     fetchDiscountRules();
     fetchActiveOrders();
-
+    fetchIceLevelData();
+    fetchSugarLevelData();
+    
     // 1. Listen Perubahan Meja Realtime
     const tableChannel = supabase
       .channel('public:tables')
@@ -150,7 +163,20 @@ export default function App() {
       })
       .subscribe();
 
-    // 5. Listen Perubahan Transaksi & Order Realtime
+    // 5. Channel Realtime Ice & Sugar
+    const iceChannel = supabase
+      .channel('public:ice_levels_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ice_levels' }, () => fetchIceLevelData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ice_level_categories' }, () => fetchIceLevelData())
+      .subscribe();
+
+    const sugarChannel = supabase
+      .channel('public:sugar_levels_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sugar_levels' }, () => fetchSugarLevelData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sugar_level_categories' }, () => fetchSugarLevelData())
+      .subscribe();
+    
+    // 6. Listen Perubahan Transaksi & Order Realtime
     const orderChannel = supabase
       .channel('public:orders_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
@@ -173,6 +199,8 @@ export default function App() {
       supabase.removeChannel(menuChannel);
       supabase.removeChannel(discountChannel);
       supabase.removeChannel(orderChannel);
+      supabase.removeChannel(iceChannel);
+      supabase.removeChannel(sugarChannel);
     };
   }, []);
 
@@ -570,6 +598,93 @@ export default function App() {
     }
   };
 
+  // ==========================================
+  // HELPER CRUD ICE LEVEL & SUGAR LEVEL
+  // ==========================================
+  const fetchIceLevelData = async () => {
+    const { data: levels } = await supabase.from('ice_levels').select('*').order('id', { ascending: true });
+    if (levels) setIceLevels(levels);
+
+    const { data: catMap } = await supabase.from('ice_level_categories').select('category_id');
+    if (catMap) setSelectedIceCategories(catMap.map(c => c.category_id));
+  };
+
+  const fetchSugarLevelData = async () => {
+    const { data: levels } = await supabase.from('sugar_levels').select('*').order('id', { ascending: true });
+    if (levels) setSugarLevels(levels);
+
+    const { data: catMap } = await supabase.from('sugar_level_categories').select('category_id');
+    if (catMap) setSelectedSugarCategories(catMap.map(c => c.category_id));
+  };
+
+  const handleSaveIce = async (e) => {
+    e.preventDefault();
+    if (!iceForm.name.trim()) return alert('Nama Ice Level wajib diisi!');
+
+    if (isEditingIce) {
+      const { error } = await supabase.from('ice_levels').update({ name: iceForm.name.trim() }).eq('id', iceForm.id);
+      if (error) alert('Gagal update: ' + error.message);
+      else { setIsEditingIce(false); fetchIceLevelData(); }
+    } else {
+      const { error } = await supabase.from('ice_levels').insert([{ name: iceForm.name.trim() }]);
+      if (error) alert('Gagal tambah: ' + error.message);
+      else fetchIceLevelData();
+    }
+    setIceForm({ id: null, name: '' });
+  };
+
+  const handleDeleteIce = async (id) => {
+    if (confirm('Hapus opsi Ice Level ini?')) {
+      const { error } = await supabase.from('ice_levels').delete().eq('id', id);
+      if (error) alert('Gagal hapus: ' + error.message);
+      else fetchIceLevelData();
+    }
+  };
+
+  const handleToggleIceCategory = async (categoryId) => {
+    const exists = selectedIceCategories.includes(categoryId);
+    if (exists) {
+      await supabase.from('ice_level_categories').delete().eq('category_id', categoryId);
+    } else {
+      await supabase.from('ice_level_categories').insert([{ category_id: categoryId }]);
+    }
+    fetchIceLevelData();
+  };
+
+  const handleSaveSugar = async (e) => {
+    e.preventDefault();
+    if (!sugarForm.name.trim()) return alert('Nama Sugar Level wajib diisi!');
+
+    if (isEditingSugar) {
+      const { error } = await supabase.from('sugar_levels').update({ name: sugarForm.name.trim() }).eq('id', sugarForm.id);
+      if (error) alert('Gagal update: ' + error.message);
+      else { setIsEditingSugar(false); fetchSugarLevelData(); }
+    } else {
+      const { error } = await supabase.from('sugar_levels').insert([{ name: sugarForm.name.trim() }]);
+      if (error) alert('Gagal tambah: ' + error.message);
+      else fetchSugarLevelData();
+    }
+    setSugarForm({ id: null, name: '' });
+  };
+
+  const handleDeleteSugar = async (id) => {
+    if (confirm('Hapus opsi Sugar Level ini?')) {
+      const { error } = await supabase.from('sugar_levels').delete().eq('id', id);
+      if (error) alert('Gagal hapus: ' + error.message);
+      else fetchSugarLevelData();
+    }
+  };
+
+  const handleToggleSugarCategory = async (categoryId) => {
+    const exists = selectedSugarCategories.includes(categoryId);
+    if (exists) {
+      await supabase.from('sugar_level_categories').delete().eq('category_id', categoryId);
+    } else {
+      await supabase.from('sugar_level_categories').insert([{ category_id: categoryId }]);
+    }
+    fetchSugarLevelData();
+  };
+  
   // --- 5. Alur Operasional POS (Dine-In) ---
   const handleSelectTable = (table) => { setSelectedTable(table); };
 
@@ -1044,6 +1159,112 @@ export default function App() {
             </div>
           </div>
 
+          {/* ==================================================== */}
+          {/* TAMBAHAN STEP 1: FITUR ICE LEVEL */}
+          {/* ==================================================== */}
+          <div style={styles.ownerCard}>
+            <h3>{isEditingIce ? 'Edit Opsi Ice Level' : 'Tambah Opsi Ice Level Baru'}</h3>
+            <form onSubmit={handleSaveIce} style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+              <input 
+                type="text" 
+                placeholder="Opsi Ice (contoh: Extra Ice, Less Ice, No Ice)" 
+                value={iceForm.name} 
+                onChange={(e) => setIceForm({ ...iceForm, name: e.target.value })}
+                style={styles.inputField}
+              />
+              <button type="submit" style={{ ...styles.primaryBtn, background: isEditingIce ? '#f59e0b' : '#3b82f6' }}>
+                {isEditingIce ? 'Simpan Opsi' : '+ Tambah Opsi Ice'}
+              </button>
+              {isEditingIce && (
+                <button type="button" style={styles.dangerOutlineBtn} onClick={() => { setIsEditingIce(false); setIceForm({ id: null, name: '' }); }}>
+                  Batal
+                </button>
+              )}
+            </form>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+              {iceLevels.map(item => (
+                <div key={item.id} style={{ ...styles.cartRow, gap: '8px' }}>
+                  <span><strong>{item.name}</strong></span>
+                  <button style={{ ...styles.roleBtn, color: '#f59e0b', padding: '2px 6px' }} onClick={() => { setIceForm(item); setIsEditingIce(true); }}>Edit</button>
+                  <button style={{ ...styles.deleteBtn, padding: '2px 6px' }} onClick={() => handleDeleteIce(item.id)}>Hapus</button>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ borderTop: '1px solid #334155', paddingTop: '12px' }}>
+              <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#94a3b8' }}>PILIH KATEGORI YANG MEMILIKI OPSI ICE LEVEL:</h4>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                {categories.map(cat => {
+                  const isChecked = selectedIceCategories.includes(cat.id);
+                  return (
+                    <label key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', background: '#0f172a', padding: '6px 10px', borderRadius: '6px', border: '1px solid #334155' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={isChecked} 
+                        onChange={() => handleToggleIceCategory(cat.id)} 
+                      />
+                      <span>{cat.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* ==================================================== */}
+          {/* TAMBAHAN STEP 1: FITUR SUGAR LEVEL */}
+          {/* ==================================================== */}
+          <div style={styles.ownerCard}>
+            <h3>{isEditingSugar ? 'Edit Opsi Sugar Level' : 'Tambah Opsi Sugar Level Baru'}</h3>
+            <form onSubmit={handleSaveSugar} style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+              <input 
+                type="text" 
+                placeholder="Opsi Sugar (contoh: 100% Sugar, 50% Sugar, No Sugar)" 
+                value={sugarForm.name} 
+                onChange={(e) => setSugarForm({ ...sugarForm, name: e.target.value })}
+                style={styles.inputField}
+              />
+              <button type="submit" style={{ ...styles.primaryBtn, background: isEditingSugar ? '#f59e0b' : '#3b82f6' }}>
+                {isEditingSugar ? 'Simpan Opsi' : '+ Tambah Opsi Sugar'}
+              </button>
+              {isEditingSugar && (
+                <button type="button" style={styles.dangerOutlineBtn} onClick={() => { setIsEditingSugar(false); setSugarForm({ id: null, name: '' }); }}>
+                  Batal
+                </button>
+              )}
+            </form>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+              {sugarLevels.map(item => (
+                <div key={item.id} style={{ ...styles.cartRow, gap: '8px' }}>
+                  <span><strong>{item.name}</strong></span>
+                  <button style={{ ...styles.roleBtn, color: '#f59e0b', padding: '2px 6px' }} onClick={() => { setSugarForm(item); setIsEditingSugar(true); }}>Edit</button>
+                  <button style={{ ...styles.deleteBtn, padding: '2px 6px' }} onClick={() => handleDeleteSugar(item.id)}>Hapus</button>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ borderTop: '1px solid #334155', paddingTop: '12px' }}>
+              <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#94a3b8' }}>PILIH KATEGORI YANG MEMILIKI OPSI SUGAR LEVEL:</h4>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                {categories.map(cat => {
+                  const isChecked = selectedSugarCategories.includes(cat.id);
+                  return (
+                    <label key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', background: '#0f172a', padding: '6px 10px', borderRadius: '6px', border: '1px solid #334155' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={isChecked} 
+                        onChange={() => handleToggleSugarCategory(cat.id)} 
+                      />
+                      <span>{cat.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+          
           {/* 3. Kelola Menu CRUD */}
           <div style={styles.ownerCard}>
             <h3>{isEditingMenu ? 'Edit Menu' : 'Tambah Menu Baru'}</h3>
