@@ -1657,8 +1657,8 @@ const handleConfirmCustomOptions = () => {
                                 </div>
                                 {b.items.map((it, idx) => (
                                   <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: '6px' }}>
-                                    {/* Kolom Kiri: Qty, nama menu, dan level ice/sugar menyatu di sini */}
-                                    <div style={{ flex: 1 }}>
+                                    {/* Kolom Kiri: Pakai textAlign: 'left' agar tidak terpengaruh CSS induk */}
+                                    <div style={{ flex: 1, textAlign: 'left' }}>
                                       <div style={{ fontSize: '13px', fontWeight: '500' }}>
                                         {it.qty}x {it.name}
                                       </div>
@@ -1669,8 +1669,8 @@ const handleConfirmCustomOptions = () => {
                                       )}
                                     </div>
                                 
-                                    {/* Kolom Kanan: Harga sejajar di kanan */}
-                                    <div style={{ fontSize: '13px', color: '#9ca3af', marginLeft: '12px', whiteSpace: 'nowrap' }}>
+                                    {/* Kolom Kanan: Harga tetap rata kanan */}
+                                    <div style={{ fontSize: '13px', color: '#9ca3af', marginLeft: '12px', whiteSpace: 'nowrap', textAlign: 'right' }}>
                                       Rp {(it.price * it.qty).toLocaleString()}
                                     </div>
                                   </div>
@@ -1822,7 +1822,8 @@ const handleConfirmCustomOptions = () => {
                         <div style={{ margin: '8px 0', fontSize: '13px' }}>
                           {order.items.map((it, idx) => (
                             <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
-                              <div style={{ flex: 1 }}>
+                              {/* Kolom Kiri: Pakai textAlign: 'left' */}
+                              <div style={{ flex: 1, textAlign: 'left' }}>
                                 <div style={{ fontSize: '13px' }}>
                                   {it.qty}x {it.name}
                                 </div>
@@ -1832,7 +1833,9 @@ const handleConfirmCustomOptions = () => {
                                   </div>
                                 )}
                               </div>
-                              <div style={{ fontSize: '13px', marginLeft: '12px', whiteSpace: 'nowrap' }}>
+                          
+                              {/* Kolom Kanan */}
+                              <div style={{ fontSize: '13px', marginLeft: '12px', whiteSpace: 'nowrap', textAlign: 'right' }}>
                                 Rp {(it.price * it.qty).toLocaleString()}
                               </div>
                             </div>
