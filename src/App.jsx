@@ -1656,16 +1656,23 @@ const handleConfirmCustomOptions = () => {
                                   <span style={styles.badgeSent}>Terkirim Dapur</span>
                                 </div>
                                 {b.items.map((it, idx) => (
-                                  <div key={idx} style={{ marginTop: '4px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-                                      <span>{it.qty}x {it.name}</span>
-                                      <span style={{ color: '#9ca3af' }}>Rp {(it.price * it.qty).toLocaleString()}</span>
-                                    </div>
-                                    {(it.iceLevel || it.sugarLevel) && (
-                                      <div style={{ fontSize: '11px', color: '#38bdf8', marginLeft: '18px' }}>
-                                        {[it.iceLevel, it.sugarLevel].filter(Boolean).join(' • ')}
+                                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: '6px' }}>
+                                    {/* Kolom Kiri: Qty, nama menu, dan level ice/sugar menyatu di sini */}
+                                    <div style={{ flex: 1 }}>
+                                      <div style={{ fontSize: '13px', fontWeight: '500' }}>
+                                        {it.qty}x {it.name}
                                       </div>
-                                    )}
+                                      {(it.iceLevel || it.sugarLevel) && (
+                                        <div style={{ fontSize: '11px', color: '#38bdf8', marginTop: '1px' }}>
+                                          {[it.iceLevel, it.sugarLevel].filter(Boolean).join(' • ')}
+                                        </div>
+                                      )}
+                                    </div>
+                                
+                                    {/* Kolom Kanan: Harga sejajar di kanan */}
+                                    <div style={{ fontSize: '13px', color: '#9ca3af', marginLeft: '12px', whiteSpace: 'nowrap' }}>
+                                      Rp {(it.price * it.qty).toLocaleString()}
+                                    </div>
                                   </div>
                                 ))}
                               </div>
@@ -1814,16 +1821,20 @@ const handleConfirmCustomOptions = () => {
                         
                         <div style={{ margin: '8px 0', fontSize: '13px' }}>
                           {order.items.map((it, idx) => (
-                            <div key={idx} style={{ marginBottom: '4px' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <span>{it.qty}x {it.name}</span>
-                                <span>Rp {(it.price * it.qty).toLocaleString()}</span>
-                              </div>
-                              {(it.iceLevel || it.sugarLevel) && (
-                                <div style={{ fontSize: '11px', color: '#38bdf8', marginLeft: '18px' }}>
-                                  {[it.iceLevel, it.sugarLevel].filter(Boolean).join(' • ')}
+                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: '13px' }}>
+                                  {it.qty}x {it.name}
                                 </div>
-                              )}
+                                {(it.iceLevel || it.sugarLevel) && (
+                                  <div style={{ fontSize: '11px', color: '#38bdf8', marginTop: '1px' }}>
+                                    {[it.iceLevel, it.sugarLevel].filter(Boolean).join(' • ')}
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{ fontSize: '13px', marginLeft: '12px', whiteSpace: 'nowrap' }}>
+                                Rp {(it.price * it.qty).toLocaleString()}
+                              </div>
                             </div>
                           ))}
                         </div>
