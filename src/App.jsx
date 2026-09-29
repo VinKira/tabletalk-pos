@@ -78,6 +78,13 @@ export default function App() {
   const [confirmedOrders, setConfirmedOrders] = useState({}); // { [tableId]: [batches] }
   const [takeawayOrders, setTakeawayOrders] = useState([]); // [array of takeaway orders]
 
+  // TAMBAHAN STEP 2: State Modal Pilihan Ice & Sugar Level
+  const [showOptionModal, setShowOptionModal] = useState(false);
+  const [pendingMenuItem, setPendingMenuItem] = useState(null);
+  const [selectedIceOption, setSelectedIceOption] = useState('');
+  const [selectedSugarOption, setSelectedSugarOption] = useState('');
+  const [optionTargetMode, setOptionTargetMode] = useState('dine-in'); // 'dine-in' | 'takeaway'
+  
   // Handler Download QR Code Meja
   const handleDownloadQR = (tableNumber) => {
     const svgElement = document.getElementById(`qr-svg-${tableNumber}`);
@@ -291,7 +298,9 @@ export default function App() {
             id: Number(it.menu_id),
             name: it.menu_name,
             price: Number(it.price),
-            qty: Number(it.qty)
+            qty: Number(it.qty),
+            iceLevel: it.ice_level || '',
+            sugarLevel: it.sugar_level || ''
           }))
         }));
         confirmedMap[tId] = batches;
@@ -315,7 +324,9 @@ export default function App() {
           id: Number(it.menu_id),
           name: it.menu_name,
           price: Number(it.price),
-          qty: Number(it.qty)
+          qty: Number(it.qty),
+          iceLevel: it.ice_level || '',
+          sugarLevel: it.sugar_level || ''
         }));
         
         const subTotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
@@ -736,21 +747,56 @@ export default function App() {
     }
   };
 
-  const handleAddToCart = (menuItem) => {
-    if (!selectedTable || selectedTable.status !== 'occupied') return;
-    const tableId = selectedTable.id;
-    const cart = currentCart[tableId] || [];
-    const existingIndex = cart.findIndex(item => item.id === menuItem.id);
-    let updatedCart = [];
-
-    if (existingIndex > -1) {
-      updatedCart = cart.map((item, idx) => idx === existingIndex ? { ...item, qty: item.qty + 1 } : item);
-    } else {
-      updatedCart = [...cart, { ...menuItem, qty: 1 }];
-    }
-    setCurrentCart(prev => ({ ...prev, [tableId]: updatedCart }));
+  // Helper Cek Categori Has Options
+  const checkCategoryOptions = (menuItem) => {
+    const categoryObj = categories.find(c => c.name === menuItem.category);
+    const catId = categoryObj ? categoryObj.id : null;
+  
+    const hasIce = catId ? selectedIceCategories.includes(catId) : false;
+    const hasSugar = catId ? selectedSugarCategories.includes(catId) : false;
+  
+    return { hasIce, hasSugar };
   };
+  
+const handleAddToCart = (menuItem) => {
+  if (!selectedTable || selectedTable.status !== 'occupied') return;
 
+  const { hasIce, hasSugar } = checkCategoryOptions(menuItem);
+
+  if (hasIce || hasSugar) {
+    setPendingMenuItem(menuItem);
+    setSelectedIceOption(hasIce && iceLevels.length > 0 ? iceLevels[0].name : '');
+    setSelectedSugarOption(hasSugar && sugarLevels.length > 0 ? sugarLevels[0].name : '');
+    setOptionTargetMode('dine-in');
+    setShowOptionModal(true);
+  } else {
+    executeAddToCartDineIn(menuItem, '', '');
+  }
+};
+
+const executeAddToCartDineIn = (menuItem, iceOpt, sugarOpt) => {
+  const tableId = selectedTable.id;
+  const cart = currentCart[tableId] || [];
+
+  // Match item berdasarkan ID + Ice + Sugar
+  const existingIndex = cart.findIndex(
+    item => item.id === menuItem.id && item.iceLevel === iceOpt && item.sugarLevel === sugarOpt
+  );
+
+  let updatedCart = [];
+  if (existingIndex > -1) {
+    updatedCart = cart.map((item, idx) => 
+      idx === existingIndex ? { ...item, qty: item.qty + 1 } : item
+    );
+  } else {
+    updatedCart = [
+      ...cart, 
+      { ...menuItem, qty: 1, iceLevel: iceOpt, sugarLevel: sugarOpt }
+    ];
+  }
+  setCurrentCart(prev => ({ ...prev, [tableId]: updatedCart }));
+};
+  
   const handleRemoveFromCart = (itemId) => {
     if (!selectedTable) return;
     const tableId = selectedTable.id;
@@ -786,7 +832,9 @@ export default function App() {
         menu_name: item.name,
         price: item.price,
         qty: item.qty,
-        category: item.category || 'Makanan'
+        category: item.category || 'Makanan',
+        ice_level: item.iceLevel || '',
+        sugar_level: item.sugarLevel || ''
       }));
 
       const { error: itemsErr } = await supabase.from('order_items').insert(itemsToInsert);
@@ -864,15 +912,51 @@ export default function App() {
   };
 
   // --- 6. Alur Operasional Takeaway ---
-  const handleAddToTakeawayCart = (menuItem) => {
-    const existingIndex = takeawayCart.findIndex(item => item.id === menuItem.id);
-    if (existingIndex > -1) {
-      setTakeawayCart(takeawayCart.map((item, idx) => idx === existingIndex ? { ...item, qty: item.qty + 1 } : item));
-    } else {
-      setTakeawayCart([...takeawayCart, { ...menuItem, qty: 1 }]);
-    }
-  };
+const handleAddToTakeawayCart = (menuItem) => {
+  const { hasIce, hasSugar } = checkCategoryOptions(menuItem);
 
+  if (hasIce || hasSugar) {
+    setPendingMenuItem(menuItem);
+    setSelectedIceOption(hasIce && iceLevels.length > 0 ? iceLevels[0].name : '');
+    setSelectedSugarOption(hasSugar && sugarLevels.length > 0 ? sugarLevels[0].name : '');
+    setOptionTargetMode('takeaway');
+    setShowOptionModal(true);
+  } else {
+    executeAddToCartTakeaway(menuItem, '', '');
+  }
+};
+
+const executeAddToCartTakeaway = (menuItem, iceOpt, sugarOpt) => {
+  const existingIndex = takeawayCart.findIndex(
+    item => item.id === menuItem.id && item.iceLevel === iceOpt && item.sugarLevel === sugarOpt
+  );
+
+  if (existingIndex > -1) {
+    setTakeawayCart(takeawayCart.map((item, idx) => 
+      idx === existingIndex ? { ...item, qty: item.qty + 1 } : item
+    ));
+  } else {
+    setTakeawayCart([
+      ...takeawayCart, 
+      { ...menuItem, qty: 1, iceLevel: iceOpt, sugarLevel: sugarOpt }
+    ]);
+  }
+};
+
+// Handler Confirm dari Modal Options
+const handleConfirmCustomOptions = () => {
+  if (!pendingMenuItem) return;
+
+  if (optionTargetMode === 'dine-in') {
+    executeAddToCartDineIn(pendingMenuItem, selectedIceOption, selectedSugarOption);
+  } else if (optionTargetMode === 'takeaway') {
+    executeAddToCartTakeaway(pendingMenuItem, selectedIceOption, selectedSugarOption);
+  }
+
+  setShowOptionModal(false);
+  setPendingMenuItem(null);
+};
+  
   const handleRemoveFromTakeawayCart = (itemId) => {
     setTakeawayCart(takeawayCart.filter(item => item.id !== itemId));
   };
@@ -905,7 +989,7 @@ export default function App() {
     if (orderErr) return alert('Gagal menyimpan order takeaway: ' + orderErr.message);
 
     const itemsToInsert = takeawayCart.map(item => ({
-      order_id: orderData.id, menu_id: item.id, menu_name: item.name, price: item.price, qty: item.qty, category: item.category || 'Makanan'
+      order_id: orderData.id, menu_id: item.id, menu_name: item.name, price: item.price, qty: item.qty, category: item.category || 'Makanan', ice_level: item.iceLevel || '', sugar_level: item.sugarLevel || ''
     }));
 
     const { error: itemsErr } = await supabase.from('order_items').insert(itemsToInsert);
@@ -1001,7 +1085,9 @@ export default function App() {
         menu_name: item.name,
         price: item.price,
         qty: item.qty,
-        category: item.category || 'Makanan'
+        category: item.category || 'Makanan',
+        ice_level: item.iceLevel || '',
+        sugar_level: item.sugarLevel || ''
       }));
 
       const { error: itemsErr } = await supabase.from('order_items').insert(itemsToInsert);
@@ -1521,6 +1607,11 @@ export default function App() {
                                 <div key={item.id} style={styles.cartRow}>
                                   <div style={{ flex: 1 }}>
                                     <div style={{ fontWeight: '500', fontSize: '14px' }}>{item.name}</div>
+                                    {(item.iceLevel || item.sugarLevel) && (
+                                      <div style={{ fontSize: '11px', color: '#38bdf8', marginTop: '2px' }}>
+                                        {[item.iceLevel, item.sugarLevel].filter(Boolean).join(' • ')}
+                                      </div>
+                                    )}
                                     <small style={{ color: '#9ca3af' }}>Rp {Number(item.price).toLocaleString()} x {item.qty}</small>
                                   </div>
                                   <div style={{ fontWeight: '600', marginRight: '12px', fontSize: '14px' }}>
@@ -1548,9 +1639,16 @@ export default function App() {
                                   <span style={styles.badgeSent}>Terkirim Dapur</span>
                                 </div>
                                 {b.items.map((it, idx) => (
-                                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginTop: '4px' }}>
-                                    <span>{it.qty}x {it.name}</span>
-                                    <span style={{ color: '#9ca3af' }}>Rp {(it.price * it.qty).toLocaleString()}</span>
+                                  <div key={idx} style={{ marginTop: '4px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                                      <span>{it.qty}x {it.name}</span>
+                                      <span style={{ color: '#9ca3af' }}>Rp {(it.price * it.qty).toLocaleString()}</span>
+                                    </div>
+                                    {(it.iceLevel || it.sugarLevel) && (
+                                      <div style={{ fontSize: '11px', color: '#38bdf8', marginLeft: '18px' }}>
+                                        {[it.iceLevel, it.sugarLevel].filter(Boolean).join(' • ')}
+                                      </div>
+                                    )}
                                   </div>
                                 ))}
                               </div>
@@ -1653,14 +1751,22 @@ export default function App() {
                   {takeawayCart.length === 0 ? (
                     <p style={styles.mutedText}>Pilih menu untuk takeaway</p>
                   ) : (
-                    takeawayCart.map(item => (
-                      <div key={item.id} style={{ ...styles.cartRow, marginBottom: '8px' }}>
+                    takeawayCart.map((item, idx) => (
+                      <div key={`${item.id}-${idx}`} style={{ ...styles.cartRow, marginBottom: '8px' }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: '500', fontSize: '14px' }}>{item.name}</div>
+                          
+                          {/* PENAMBAHAN: Subteks Ice & Sugar Level */}
+                          {(item.iceLevel || item.sugarLevel) && (
+                            <div style={{ fontSize: '11px', color: '#38bdf8', marginTop: '2px', marginBottom: '2px' }}>
+                              {[item.iceLevel, item.sugarLevel].filter(Boolean).join(' • ')}
+                            </div>
+                          )}
+                    
                           <small style={{ color: '#9ca3af' }}>Rp {Number(item.price).toLocaleString()} x {item.qty}</small>
                         </div>
                         <div style={{ fontWeight: '600', marginRight: '12px' }}>Rp {(item.price * item.qty).toLocaleString()}</div>
-                        <button style={styles.deleteBtn} onClick={() => handleRemoveFromTakeawayCart(item.id)}>✕</button>
+                        <button style={styles.deleteBtn} onClick={() => handleRemoveFromTakeawayCart(item)}>X</button>
                       </div>
                     ))
                   )}
@@ -1824,9 +1930,18 @@ export default function App() {
 
             <div style={{ borderTop: '1px solid #334155', borderBottom: '1px solid #334155', padding: '8px 0', marginBottom: '12px' }}>
               {selectedTakeawayOrder.items.map((it, idx) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
-                  <span>{it.qty}x {it.name}</span>
-                  <span>Rp {(it.price * it.qty).toLocaleString()}</span>
+                <div key={idx} style={{ marginBottom: '6px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                    <span>{it.qty}x {it.name}</span>
+                    <span>Rp {(it.price * it.qty).toLocaleString()}</span>
+                  </div>
+              
+                  {/* PENAMBAHAN: Subteks Ice & Sugar Level */}
+                  {(it.iceLevel || it.sugarLevel) && (
+                    <div style={{ fontSize: '11px', color: '#38bdf8', marginTop: '1px' }}>
+                      {[it.iceLevel, it.sugarLevel].filter(Boolean).join(' • ')}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -1855,7 +1970,96 @@ export default function App() {
           </div>
         </div>
       )}
-
+            {/* Modal Pilihan Ice & Sugar Level */}
+      {showOptionModal && pendingMenuItem && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalCard}>
+            <h3 style={{ margin: '0 0 4px 0', fontSize: '16px' }}>
+              Kustomisasi {pendingMenuItem.name}
+            </h3>
+            <p style={{ margin: '0 0 16px 0', fontSize: '12px', color: '#94a3b8' }}>
+              Pilih varian level es dan gula untuk pesanan ini.
+            </p>
+      
+            {/* Opsi Ice Level */}
+            {checkCategoryOptions(pendingMenuItem).hasIce && (
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                  ICE LEVEL:
+                </label>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {iceLevels.map(ice => (
+                    <button
+                      key={ice.id}
+                      type="button"
+                      onClick={() => setSelectedIceOption(ice.name)}
+                      style={{
+                        ...styles.roleBtn,
+                        background: selectedIceOption === ice.name ? '#3b82f6' : '#0f172a',
+                        color: selectedIceOption === ice.name ? '#fff' : '#94a3b8',
+                        border: '1px solid #334155',
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: selectedIceOption === ice.name ? '600' : 'normal'
+                      }}
+                    >
+                      {ice.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+      
+            {/* Opsi Sugar Level */}
+            {checkCategoryOptions(pendingMenuItem).hasSugar && (
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                  SUGAR LEVEL:
+                </label>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {sugarLevels.map(sugar => (
+                    <button
+                      key={sugar.id}
+                      type="button"
+                      onClick={() => setSelectedSugarOption(sugar.name)}
+                      style={{
+                        ...styles.roleBtn,
+                        background: selectedSugarOption === sugar.name ? '#3b82f6' : '#0f172a',
+                        color: selectedSugarOption === sugar.name ? '#fff' : '#94a3b8',
+                        border: '1px solid #334155',
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: selectedSugarOption === sugar.name ? '600' : 'normal'
+                      }}
+                    >
+                      {sugar.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+      
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                style={{ ...styles.dangerOutlineBtn, flex: 1 }}
+                onClick={() => { setShowOptionModal(false); setPendingMenuItem(null); }}
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                style={{ ...styles.primaryBtn, flex: 2 }}
+                onClick={handleConfirmCustomOptions}
+              >
+                Tambahkan ke Order
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
