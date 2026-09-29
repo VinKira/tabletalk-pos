@@ -126,6 +126,7 @@ export default function App() {
     const cSub = supabase.channel('public:categories').on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, fetchCategories).subscribe();
     const mSub = supabase.channel('public:menu_list').on('postgres_changes', { event: '*', schema: 'public', table: 'menu_list' }, fetchMenuList).subscribe();
     const dSub = supabase.channel('public:discount_rules').on('postgres_changes', { event: '*', schema: 'public', table: 'discount_rules' }, fetchDiscountRules).subscribe();
+    const optSub = supabase.channel('public:menu_options').on('postgres_changes', { event: '*', schema: 'public', table: 'menu_options' }, fetchMasterOptions).subscribe();
     const oSub = supabase.channel('public:orders_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => fetchActiveOrders())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'order_batches' }, () => fetchActiveOrders())
@@ -138,6 +139,7 @@ export default function App() {
       supabase.removeChannel(cSub);
       supabase.removeChannel(mSub);
       supabase.removeChannel(dSub);
+      supabase.removeChannel(optSub);
       supabase.removeChannel(oSub);
     };
   }, []);
@@ -246,23 +248,52 @@ export default function App() {
   };
 
   // --- Handler Modal Opsi POS Kasir ---
-  const handleOpenPosModal = (menuItem, mode = 'dine-in') => {
+const handleOpenPosModal = (menuItem, mode = 'dine-in') => {
+  const catObj = categories.find(c => c.name.toLowerCase() === menuItem.category.toLowerCase());
+  const allowed = catObj?.allowed_options || [];
+  const filteredOpts = masterOptions.filter(o => allowed.includes(o.title));
+
+  // Jika punya opsi (misal: Ice / Sugar Level), Buka Modal POS
+  if (filteredOpts.length > 0) {
     setPosSelectedItem(menuItem);
     setPosTargetMode(mode);
     setPosNotes('');
-
-    const catObj = categories.find(c => c.name === menuItem.category);
-    const allowed = catObj?.allowed_options || [];
-    const filteredOpts = masterOptions.filter(o => allowed.includes(o.title));
     setPosAvailableOptions(filteredOpts);
 
     const init = {};
     filteredOpts.forEach(o => {
-      if (o.values && o.values.length > 0) init[o.title] = o.values[0];
+      const vals = Array.isArray(o.values) ? o.values : (typeof o.values === 'string' ? JSON.parse(o.values) : []);
+      if (vals && vals.length > 0) init[o.title] = vals[0];
     });
     setPosSelectedOptions(init);
     setShowPosOptionModal(true);
-  };
+  } else {
+    // Jika TIDAK punya opsi, langsung tambahkan ke keranjang POS
+    const cartKey = `${menuItem.id}-{}-`;
+    const newItem = { ...menuItem, options: {}, notes: '', cartKey };
+
+    if (mode === 'dine-in') {
+      if (!selectedTable || selectedTable.status !== 'occupied') return alert('Buka meja terlebih dahulu!');
+      const tableId = selectedTable.id;
+      const cart = currentCart[tableId] || [];
+
+      const existingIndex = cart.findIndex(item => item.cartKey === cartKey);
+      if (existingIndex > -1) {
+        const updated = cart.map((item, idx) => idx === existingIndex ? { ...item, qty: item.qty + 1 } : item);
+        setCurrentCart(prev => ({ ...prev, [tableId]: updated }));
+      } else {
+        setCurrentCart(prev => ({ ...prev, [tableId]: [...cart, { ...newItem, qty: 1 }] }));
+      }
+    } else {
+      const existingIndex = takeawayCart.findIndex(item => item.cartKey === cartKey);
+      if (existingIndex > -1) {
+        setTakeawayCart(takeawayCart.map((item, idx) => idx === existingIndex ? { ...item, qty: item.qty + 1 } : item));
+      } else {
+        setTakeawayCart([...takeawayCart, { ...newItem, qty: 1 }]);
+      }
+    }
+  }
+};
 
   const handleConfirmPosItem = () => {
     if (!posSelectedItem) return;
