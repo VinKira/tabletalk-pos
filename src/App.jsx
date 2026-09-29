@@ -280,7 +280,7 @@ export default function App() {
         order_batches (
           id,
           created_at,
-          order_items ( id, menu_id, menu_name, price, qty, category )
+          order_items ( idorder_items ( id, menu_id, menu_name, price, qty, category, ice_level, sugar_level ), menu_id, menu_name, price, qty, category )
         )
       `)
       .eq('order_type', 'dine-in')
@@ -312,7 +312,7 @@ export default function App() {
       .from('orders')
       .select(`
         *,
-        order_items ( id, menu_id, menu_name, price, qty, category )
+        order_items ( id,order_items ( id, menu_id, menu_name, price, qty, category, ice_level, sugar_level ) menu_id, menu_name, price, qty, category )
       `)
       .eq('order_type', 'takeaway')
       .eq('status', 'active')
@@ -1797,9 +1797,16 @@ const handleConfirmCustomOptions = () => {
                         
                         <div style={{ margin: '8px 0', fontSize: '13px' }}>
                           {order.items.map((it, idx) => (
-                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <span>{it.qty}x {it.name}</span>
-                              <span>Rp {(it.price * it.qty).toLocaleString()}</span>
+                            <div key={idx} style={{ marginBottom: '4px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span>{it.qty}x {it.name}</span>
+                                <span>Rp {(it.price * it.qty).toLocaleString()}</span>
+                              </div>
+                              {(it.iceLevel || it.sugarLevel) && (
+                                <div style={{ fontSize: '11px', color: '#38bdf8', marginLeft: '18px' }}>
+                                  {[it.iceLevel, it.sugarLevel].filter(Boolean).join(' • ')}
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
