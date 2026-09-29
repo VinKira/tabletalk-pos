@@ -4,7 +4,7 @@ import { supabase } from './supabaseClient';
 import CustomerOrder from './CustomerOrder';
 
 export default function App() {
-  // --- Global Fullscreen Fix ---
+  // --- Fullscreen Setup ---
   useEffect(() => {
     document.body.style.margin = '0';
     document.body.style.padding = '0';
@@ -19,17 +19,15 @@ export default function App() {
     }
   }, []);
 
-  // --- Detection URL Parameters (Self Order Customer Mode) ---
+  // --- Self Order Parameter Check ---
   const [selfOrderTableId, setSelfOrderTableId] = useState(null);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tableParam = params.get('table');
-    if (tableParam) {
-      setSelfOrderTableId(tableParam);
-    }
+    if (tableParam) setSelfOrderTableId(tableParam);
   }, []);
 
-  // --- Auth & PIN Password State ---
+  // --- Auth Role State ---
   const [userRole, setUserRole] = useState('cashier'); // 'cashier' | 'owner'
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [targetRole, setTargetRole] = useState(null);
@@ -56,355 +54,39 @@ export default function App() {
     setPinInput('');
   };
 
-  // --- Dynamic Data States (Connected to Supabase Realtime) ---
+  // --- Main Data States ---
   const [tables, setTables] = useState([]);
   const [categories, setCategories] = useState([]);
   const [menuList, setMenuList] = useState([]);
   const [discountRules, setDiscountRules] = useState([]);
+  const [masterOptions, setMasterOptions] = useState([]);
 
-  // --- State Pesanan Supabase Realtime ---
-  const [activeSessions, setActiveSessions] = useState({}); // { [tableId]: session_id }
-  const [confirmedOrders, setConfirmedOrders] = useState({}); // { [tableId]: [batches] }
-  const [takeawayOrders, setTakeawayOrders] = useState([]); // [array of takeaway orders]
+  // --- Active Order States ---
+  const [activeSessions, setActiveSessions] = useState({});
+  const [confirmedOrders, setConfirmedOrders] = useState({});
+  const [takeawayOrders, setTakeawayOrders] = useState([]);
 
-  // State Options Modal untuk POS Kasir
-  const [optionModalItem, setOptionModalItem] = useState(null);
-  const [optionTargetMode, setOptionTargetMode] = useState(null); // 'dine-in' | 'takeaway'
-  const [posIceOption, setPosIceOption] = useState('Normal Ice');
-  const [posSugarOption, setPosSugarOption] = useState('Normal Sugar');
+  // --- State Modal POS Kasir (Dine-In & Takeaway) ---
+  const [showPosOptionModal, setShowPosOptionModal] = useState(false);
+  const [posSelectedItem, setPosSelectedItem] = useState(null);
+  const [posTargetMode, setPosTargetMode] = useState('dine-in'); // 'dine-in' | 'takeaway'
+  const [posSelectedOptions, setPosSelectedOptions] = useState({});
+  const [posNotes, setPosNotes] = useState('');
+  const [posAvailableOptions, setPosAvailableOptions] = useState([]);
 
-// State Modal Opsi Dine-In
-  const [showPosDineInOptionModal, setShowPosDineInOptionModal] = useState(false);
-  const [posDineInSelectedItem, setPosDineInSelectedItem] = useState(null);
-  const [posDineInIce, setPosDineInIce] = useState('Normal Ice');
-  const [posDineInSugar, setPosDineInSugar] = useState('Normal Sugar');
-
-  // Handler Buka Modal Opsi Dine-In
-  const handleOpenPosDineInOptionModal = (menuItem) => {
-    setPosDineInSelectedItem(menuItem);
-    setPosDineInIce('Normal Ice');
-    setPosDineInSugar('Normal Sugar');
-    setShowPosDineInOptionModal(true);
-  };
-  
-  // Buka Modal saat menu diklik di POS Kasir
-  const handleOpenPosOptionModal = (menuItem, mode) => {
-    setOptionModalItem(menuItem);
-    setOptionTargetMode(mode);
-    setPosIceOption('Normal Ice');
-    setPosSugarOption('Normal Sugar');
-  };
-
-  // Konfirmasi Tambah ke Cart Dine-In / Takeaway
-  const handleConfirmPosAddToCart = () => {
-    if (!optionModalItem) return;
-
-    const itemWithOptions = {
-      ...optionModalItem,
-      options: { ice: posIceOption, sugar: posSugarOption }
-    };
-
-    if (optionTargetMode === 'dine-in') {
-      if (!selectedTable || selectedTable.status !== 'occupied') return;
-      const tableId = selectedTable.id;
-      const cart = currentCart[tableId] || [];
-      
-      const existingIndex = cart.findIndex(
-        item => item.id === itemWithOptions.id && 
-                item.options?.ice === posIceOption && 
-                item.options?.sugar === posSugarOption
-      );
-
-      if (existingIndex > -1) {
-        const updated = cart.map((item, idx) => idx === existingIndex ? { ...item, qty: item.qty + 1 } : item);
-        setCurrentCart(prev => ({ ...prev, [tableId]: updated }));
-      } else {
-        setCurrentCart(prev => ({ ...prev, [tableId]: [...cart, { ...itemWithOptions, qty: 1 }] }));
-      }
-    } else if (optionTargetMode === 'takeaway') {
-      const existingIndex = takeawayCart.findIndex(
-        item => item.id === itemWithOptions.id && 
-                item.options?.ice === posIceOption && 
-                item.options?.sugar === posSugarOption
-      );
-
-      if (existingIndex > -1) {
-        setTakeawayCart(takeawayCart.map((item, idx) => idx === existingIndex ? { ...item, qty: item.qty + 1 } : item));
-      } else {
-        setTakeawayCart([...takeawayCart, { ...itemWithOptions, qty: 1 }]);
-      }
-    }
-
-    setOptionModalItem(null); // Tutup modal
-  };
-  
-  // Handler Download QR Code Meja
-  const handleDownloadQR = (tableNumber) => {
-    const svgElement = document.getElementById(`qr-svg-${tableNumber}`);
-    if (!svgElement) return;
-
-    const svgData = new XMLSerializer().serializeToString(svgElement);
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
-
-    img.onload = () => {
-      canvas.width = img.width + 40;
-      canvas.height = img.height + 40;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 20, 20);
-
-      const pngUrl = canvas.toDataURL('image/png');
-      const downloadLink = document.createElement('a');
-      downloadLink.href = pngUrl;
-      downloadLink.download = `QR_${tableNumber.replace(/\s+/g, '_')}.png`;
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      document.body.removeChild(downloadLink);
-    };
-
-    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
-  };
-
-  const calculateAutoDiscount = (recapList, rules = discountRules) => {
-    let totalDiscount = 0;
-    if (!rules || rules.length === 0) return 0;
-    
-    recapList.forEach(item => {
-      const matchedRules = rules.filter(r => Number(r.menuId) === Number(item.id) && item.qty >= r.minQty);
-      matchedRules.forEach(r => {
-        const multiplier = Math.floor(item.qty / r.minQty);
-        totalDiscount += multiplier * r.discountAmount;
-      });
-    });
-    return totalDiscount;
-  };
-
-  // Fetch Data Awal & Realtime Subscription Supabase
-  useEffect(() => {
-    fetchTables();
-    fetchCategories();
-    fetchMenuList();
-    fetchDiscountRules();
-    fetchActiveOrders();
-
-    // 1. Listen Perubahan Meja Realtime
-    const tableChannel = supabase
-      .channel('public:tables')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, () => {
-        fetchTables();
-      })
-      .subscribe();
-
-    // 2. Listen Perubahan Kategori Realtime
-    const categoryChannel = supabase
-      .channel('public:categories')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, () => {
-        fetchCategories();
-      })
-      .subscribe();
-
-    // 3. Listen Perubahan Menu Realtime
-    const menuChannel = supabase
-      .channel('public:menu_list')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_list' }, () => {
-        fetchMenuList();
-      })
-      .subscribe();
-
-    // 4. Listen Perubahan Promo Realtime
-    const discountChannel = supabase
-      .channel('public:discount_rules')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'discount_rules' }, () => {
-        fetchDiscountRules();
-      })
-      .subscribe();
-
-    // 5. Listen Perubahan Transaksi & Order Realtime
-    const orderChannel = supabase
-      .channel('public:orders_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-        fetchActiveOrders();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_batches' }, () => {
-        fetchActiveOrders();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => {
-        fetchActiveOrders();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'table_sessions' }, () => {
-        fetchActiveOrders();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(tableChannel);
-      supabase.removeChannel(categoryChannel);
-      supabase.removeChannel(menuChannel);
-      supabase.removeChannel(discountChannel);
-      supabase.removeChannel(orderChannel);
-    };
-  }, []);
-
-  const fetchTables = async () => {
-    const { data, error } = await supabase.from('tables').select('*').order('id', { ascending: true });
-    if (!error && data) {
-      setTables(data);
-
-      setSelectedTable(prevSelected => {
-        if (!prevSelected) return null;
-        const updatedCurrentTable = data.find(t => Number(t.id) === Number(prevSelected.id));
-        return updatedCurrentTable || prevSelected;
-      });
-    }
-  };
-
-  const fetchCategories = async () => {
-    const { data, error } = await supabase.from('categories').select('*').order('id', { ascending: true });
-    if (!error && data) {
-      setCategories(data);
-      if (data.length > 0 && !menuForm.category) {
-        setMenuForm(prev => ({ ...prev, category: data[0].name }));
-      }
-    }
-  };
-
-  const fetchMenuList = async () => {
-    const { data, error } = await supabase.from('menu_list').select('*').order('id', { ascending: true });
-    if (!error && data) setMenuList(data);
-  };
-
-  const fetchDiscountRules = async () => {
-    const { data, error } = await supabase.from('discount_rules').select('*').order('id', { ascending: true });
-    if (!error && data) {
-      const formatted = data.map(item => ({
-        id: item.id,
-        menuId: Number(item.menu_id),
-        menuName: item.menu_name,
-        minQty: Number(item.min_qty),
-        discountAmount: Number(item.discount_amount)
-      }));
-      setDiscountRules(formatted);
-      // Panggil fetchActiveOrders secara eksplisit dengan rule terbaru
-      fetchActiveOrders(formatted);
-    }
-  };
-
-// Synchronize Active Orders (Dine-In & Takeaway) from Supabase
-  const fetchActiveOrders = async (currentRules = discountRules) => {
-    const { data: openSessions } = await supabase
-      .from('table_sessions')
-      .select('*')
-      .eq('status', 'open');
-
-    const sessionsMap = {};
-    if (openSessions) {
-      openSessions.forEach(s => {
-        sessionsMap[s.table_id] = s.id;
-      });
-    }
-    setActiveSessions(sessionsMap);
-
-    const { data: dineInOrders } = await supabase
-      .from('orders')
-      .select(`
-        id,
-        table_id,
-        session_id,
-        created_at,
-        order_batches (
-          id,
-          created_at,
-          order_items ( id, menu_id, menu_name, price, qty, category )
-        )
-      `)
-      .eq('order_type', 'dine-in')
-      .eq('status', 'active');
-
-    const confirmedMap = {};
-    if (dineInOrders) {
-      dineInOrders.forEach(ord => {
-        const tId = ord.table_id;
-        const batches = (ord.order_batches || []).map(b => ({
-          batchId: b.id,
-          time: new Date(b.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-          type: 'Order',
-          items: (b.order_items || []).map(it => ({
-            id: Number(it.menu_id),
-            name: it.menu_name,
-            price: Number(it.price),
-            qty: Number(it.qty)
-          }))
-        }));
-        confirmedMap[tId] = batches;
-      });
-    }
-    setConfirmedOrders(confirmedMap);
-
-    const { data: takeaways } = await supabase
-      .from('orders')
-      .select(`
-        *,
-        order_items ( id, menu_id, menu_name, price, qty, category )
-      `)
-      .eq('order_type', 'takeaway')
-      .eq('status', 'active')
-      .order('created_at', { ascending: false });
-
-    if (takeaways) {
-      const formattedTakeaway = takeaways.map(t => {
-        const items = (t.order_items || []).map(it => ({
-          id: Number(it.menu_id),
-          name: it.menu_name,
-          price: Number(it.price),
-          qty: Number(it.qty)
-        }));
-        
-        const subTotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
-        
-        // HITUNG RE-CALCULATE DISKON REALTIME:
-        // Jika order BELUM lunas, selalu hitung ulang diskon mengikuti aturan promo aktif saat ini.
-        // Jika order SUDAH lunas, gunakan nilai diskon histori yang ada di DB.
-        const calculatedDiscount = calculateAutoDiscount(items, currentRules);
-        const discount = t.is_paid ? (Number(t.discount) || 0) : calculatedDiscount;
-        const total = Math.max(0, subTotal - discount);
-
-        return {
-          id: t.id,
-          orderNo: t.order_no,
-          platform: t.platform,
-          customerName: t.customer_name || 'Pelanggan',
-          subTotal,
-          discount,
-          total,
-          isPaid: Boolean(t.is_paid),
-          time: new Date(t.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-          items
-        };
-      });
-      setTakeawayOrders(formattedTakeaway);
-    }
-  };
-
-  // State Form Owner Mode
+  // --- Form States Owner ---
   const [tableForm, setTableForm] = useState({ id: null, number: '' });
   const [isEditingTable, setIsEditingTable] = useState(false);
-
   const [categoryForm, setCategoryForm] = useState({ id: null, name: '' });
   const [isEditingCategory, setIsEditingCategory] = useState(false);
-
   const [menuForm, setMenuForm] = useState({ id: null, name: '', price: '', category: '', image_url: '' });
   const [isEditingMenu, setIsEditingMenu] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
-  
   const [discountForm, setDiscountForm] = useState({ id: null, menuId: '', minQty: 1, discountAmount: 0 });
   const [isEditingDiscount, setIsEditingDiscount] = useState(false);
 
-  // --- POS Mode Selection ---
+  // --- Mode POS & Order States ---
   const [posMode, setPosMode] = useState('dine-in');
-
-  // --- Dine-In State ---
   const [selectedTable, setSelectedTable] = useState(null);
   const [currentCart, setCurrentCart] = useState(() => {
     const saved = localStorage.getItem('pos_dinein_current_cart');
@@ -412,7 +94,6 @@ export default function App() {
   });
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
 
-  // --- Takeaway State ---
   const [takeawayPlatform, setTakeawayPlatform] = useState('On Site');
   const [takeawayCustomerName, setTakeawayCustomerName] = useState('');
   const [takeawayOrderNoInput, setTakeawayOrderNoInput] = useState('');
@@ -427,346 +108,279 @@ export default function App() {
   const [selectedTakeawayOrder, setSelectedTakeawayOrder] = useState(null);
   const [showTakeawayPaymentModal, setShowTakeawayPaymentModal] = useState(false);
 
-  // --- Self-Order Cart State (Pelanggan) ---
-  const [selfOrderCart, setSelfOrderCart] = useState([]);
-  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('Semua');
+  // Persistence LocalStorage
+  useEffect(() => { localStorage.setItem('pos_dinein_current_cart', JSON.stringify(currentCart)); }, [currentCart]);
+  useEffect(() => { localStorage.setItem('pos_takeaway_counter', JSON.stringify(autoTakeawayCounter)); }, [autoTakeawayCounter]);
+  useEffect(() => { localStorage.setItem('pos_draft_takeaway_cart', JSON.stringify(takeawayCart)); }, [takeawayCart]);
 
-  // Auto-Save Local Storage
+  // Initial Fetch & Subscriptions
   useEffect(() => {
-    localStorage.setItem('pos_dinein_current_cart', JSON.stringify(currentCart));
-  }, [currentCart]);
+    fetchTables();
+    fetchCategories();
+    fetchMenuList();
+    fetchDiscountRules();
+    fetchMasterOptions();
+    fetchActiveOrders();
 
-  useEffect(() => {
-    localStorage.setItem('pos_takeaway_counter', JSON.stringify(autoTakeawayCounter));
-  }, [autoTakeawayCounter]);
+    const tSub = supabase.channel('public:tables').on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, fetchTables).subscribe();
+    const cSub = supabase.channel('public:categories').on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, fetchCategories).subscribe();
+    const mSub = supabase.channel('public:menu_list').on('postgres_changes', { event: '*', schema: 'public', table: 'menu_list' }, fetchMenuList).subscribe();
+    const dSub = supabase.channel('public:discount_rules').on('postgres_changes', { event: '*', schema: 'public', table: 'discount_rules' }, fetchDiscountRules).subscribe();
+    const oSub = supabase.channel('public:orders_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => fetchActiveOrders())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_batches' }, () => fetchActiveOrders())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => fetchActiveOrders())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'table_sessions' }, () => fetchActiveOrders())
+      .subscribe();
 
-  useEffect(() => {
-    localStorage.setItem('pos_draft_takeaway_cart', JSON.stringify(takeawayCart));
-  }, [takeawayCart]);
+    return () => {
+      supabase.removeChannel(tSub);
+      supabase.removeChannel(cSub);
+      supabase.removeChannel(mSub);
+      supabase.removeChannel(dSub);
+      supabase.removeChannel(oSub);
+    };
+  }, []);
 
-  // --- 1. Manajemen Meja CRUD ---
+  const fetchTables = async () => {
+    const { data } = await supabase.from('tables').select('*').order('id', { ascending: true });
+    if (data) {
+      setTables(data);
+      setSelectedTable(prev => prev ? (data.find(t => Number(t.id) === Number(prev.id)) || prev) : null);
+    }
+  };
+
+  const fetchCategories = async () => {
+    const { data } = await supabase.from('categories').select('*').order('id', { ascending: true });
+    if (data) setCategories(data);
+  };
+
+  const fetchMenuList = async () => {
+    const { data } = await supabase.from('menu_list').select('*').order('id', { ascending: true });
+    if (data) setMenuList(data);
+  };
+
+  const fetchMasterOptions = async () => {
+    const { data } = await supabase.from('menu_options').select('*');
+    if (data) setMasterOptions(data);
+  };
+
+  const fetchDiscountRules = async () => {
+    const { data } = await supabase.from('discount_rules').select('*').order('id', { ascending: true });
+    if (data) {
+      const formatted = data.map(i => ({
+        id: i.id, menuId: Number(i.menu_id), menuName: i.menu_name, minQty: Number(i.min_qty), discountAmount: Number(i.discount_amount)
+      }));
+      setDiscountRules(formatted);
+      fetchActiveOrders(formatted);
+    }
+  };
+
+  const calculateAutoDiscount = (recapList, rules = discountRules) => {
+    let totalDiscount = 0;
+    if (!rules || rules.length === 0) return 0;
+    recapList.forEach(item => {
+      const matched = rules.filter(r => Number(r.menuId) === Number(item.id) && item.qty >= r.minQty);
+      matched.forEach(r => {
+        totalDiscount += Math.floor(item.qty / r.minQty) * r.discountAmount;
+      });
+    });
+    return totalDiscount;
+  };
+
+  const fetchActiveOrders = async (currentRules = discountRules) => {
+    const { data: openSessions } = await supabase.from('table_sessions').select('*').eq('status', 'open');
+    const sessionsMap = {};
+    if (openSessions) openSessions.forEach(s => { sessionsMap[s.table_id] = s.id; });
+    setActiveSessions(sessionsMap);
+
+    const { data: dineInOrders } = await supabase
+      .from('orders')
+      .select(`
+        id, table_id, session_id, created_at,
+        order_batches (
+          id, created_at,
+          order_items ( id, menu_id, menu_name, price, qty, category, options, notes )
+        )
+      `)
+      .eq('order_type', 'dine-in')
+      .eq('status', 'active');
+
+    const confirmedMap = {};
+    if (dineInOrders) {
+      dineInOrders.forEach(ord => {
+        const batches = (ord.order_batches || []).map(b => ({
+          batchId: b.id,
+          time: new Date(b.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+          items: (b.order_items || []).map(it => ({
+            id: Number(it.menu_id), name: it.menu_name, price: Number(it.price), qty: Number(it.qty), options: it.options || {}, notes: it.notes || ''
+          }))
+        }));
+        confirmedMap[ord.table_id] = batches;
+      });
+    }
+    setConfirmedOrders(confirmedMap);
+
+    const { data: takeaways } = await supabase
+      .from('orders')
+      .select(`*, order_items ( id, menu_id, menu_name, price, qty, category, options, notes )`)
+      .eq('order_type', 'takeaway')
+      .eq('status', 'active')
+      .order('created_at', { ascending: false });
+
+    if (takeaways) {
+      const formatted = takeaways.map(t => {
+        const items = (t.order_items || []).map(it => ({
+          id: Number(it.menu_id), name: it.menu_name, price: Number(it.price), qty: Number(it.qty), options: it.options || {}, notes: it.notes || ''
+        }));
+        const subTotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
+        const discount = t.is_paid ? (Number(t.discount) || 0) : calculateAutoDiscount(items, currentRules);
+        return {
+          id: t.id, orderNo: t.order_no, platform: t.platform, customerName: t.customer_name || 'Pelanggan',
+          subTotal, discount, total: Math.max(0, subTotal - discount), isPaid: Boolean(t.is_paid),
+          time: new Date(t.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }), items
+        };
+      });
+      setTakeawayOrders(formatted);
+    }
+  };
+
+  // --- Handler Modal Opsi POS Kasir ---
+  const handleOpenPosModal = (menuItem, mode = 'dine-in') => {
+    setPosSelectedItem(menuItem);
+    setPosTargetMode(mode);
+    setPosNotes('');
+
+    const catObj = categories.find(c => c.name === menuItem.category);
+    const allowed = catObj?.allowed_options || [];
+    const filteredOpts = masterOptions.filter(o => allowed.includes(o.title));
+    setPosAvailableOptions(filteredOpts);
+
+    const init = {};
+    filteredOpts.forEach(o => {
+      if (o.values && o.values.length > 0) init[o.title] = o.values[0];
+    });
+    setPosSelectedOptions(init);
+    setShowPosOptionModal(true);
+  };
+
+  const handleConfirmPosItem = () => {
+    if (!posSelectedItem) return;
+
+    const cartKey = `${posSelectedItem.id}-${JSON.stringify(posSelectedOptions)}-${posNotes}`;
+    const newItem = {
+      ...posSelectedItem,
+      options: posSelectedOptions,
+      notes: posNotes,
+      cartKey
+    };
+
+    if (posTargetMode === 'dine-in') {
+      if (!selectedTable || selectedTable.status !== 'occupied') return alert('Buka meja terlebih dahulu!');
+      const tableId = selectedTable.id;
+      const cart = currentCart[tableId] || [];
+
+      const existingIndex = cart.findIndex(item => item.cartKey === cartKey);
+      if (existingIndex > -1) {
+        const updated = cart.map((item, idx) => idx === existingIndex ? { ...item, qty: item.qty + 1 } : item);
+        setCurrentCart(prev => ({ ...prev, [tableId]: updated }));
+      } else {
+        setCurrentCart(prev => ({ ...prev, [tableId]: [...cart, { ...newItem, qty: 1 }] }));
+      }
+    } else {
+      const existingIndex = takeawayCart.findIndex(item => item.cartKey === cartKey);
+      if (existingIndex > -1) {
+        setTakeawayCart(takeawayCart.map((item, idx) => idx === existingIndex ? { ...item, qty: item.qty + 1 } : item));
+      } else {
+        setTakeawayCart([...takeawayCart, { ...newItem, qty: 1 }]);
+      }
+    }
+
+    setShowPosOptionModal(false);
+    setPosSelectedItem(null);
+  };
+
+  // --- CRUD Owner Handlers ---
+  const handleToggleCategoryOption = async (categoryObj, optionTitle) => {
+    const current = categoryObj.allowed_options || [];
+    const nextOptions = current.includes(optionTitle)
+      ? current.filter(o => o !== optionTitle)
+      : [...current, optionTitle];
+
+    const { error } = await supabase.from('categories').update({ allowed_options: nextOptions }).eq('id', categoryObj.id);
+    if (!error) fetchCategories();
+  };
+
   const handleSaveTable = async (e) => {
     e.preventDefault();
     if (!tableForm.number.trim()) return;
-
     if (isEditingTable) {
-      const { error } = await supabase.from('tables').update({ number: tableForm.number }).eq('id', tableForm.id);
-      if (error) alert('Gagal update meja: ' + error.message);
-      else { setIsEditingTable(false); fetchTables(); }
+      await supabase.from('tables').update({ number: tableForm.number }).eq('id', tableForm.id);
+      setIsEditingTable(false);
     } else {
-      const { error } = await supabase.from('tables').insert([{ number: tableForm.number, status: 'available' }]);
-      if (error) alert('Gagal tambah meja: ' + error.message);
-      else fetchTables();
+      await supabase.from('tables').insert([{ number: tableForm.number, status: 'available' }]);
     }
     setTableForm({ id: null, number: '' });
+    fetchTables();
   };
 
-  const handleEditTableClick = (t) => { setTableForm(t); setIsEditingTable(true); };
-
-  const handleDeleteTable = async (id) => {
-    if (confirm('Yakin ingin menghapus meja ini beserta seluruh riwayat transaksinya?')) {
-      try {
-        const { data: relatedOrders } = await supabase
-          .from('orders')
-          .select('id')
-          .eq('table_id', id);
-
-        if (relatedOrders && relatedOrders.length > 0) {
-          const orderIds = relatedOrders.map(o => o.id);
-          await supabase.from('order_items').delete().in('order_id', orderIds);
-          await supabase.from('order_batches').delete().in('order_id', orderIds);
-          await supabase.from('orders').delete().eq('table_id', id);
-        }
-
-        await supabase.from('table_sessions').delete().eq('table_id', id);
-
-        const { error } = await supabase.from('tables').delete().eq('id', id);
-        if (error) throw error;
-
-        if (selectedTable?.id === id) setSelectedTable(null);
-        fetchTables();
-      } catch (error) {
-        alert('Gagal hapus meja: ' + error.message);
-      }
-    }
-  };
-
-  // --- 2. Manajemen Kategori CRUD ---
   const handleSaveCategory = async (e) => {
     e.preventDefault();
-    if (!categoryForm.name.trim()) return alert('Nama Kategori wajib diisi!');
-
+    if (!categoryForm.name.trim()) return;
     if (isEditingCategory) {
-      const { error } = await supabase.from('categories').update({ name: categoryForm.name.trim() }).eq('id', categoryForm.id);
-      if (error) alert('Gagal update kategori: ' + error.message);
-      else { setIsEditingCategory(false); fetchCategories(); }
+      await supabase.from('categories').update({ name: categoryForm.name.trim() }).eq('id', categoryForm.id);
+      setIsEditingCategory(false);
     } else {
-      const { error } = await supabase.from('categories').insert([{ name: categoryForm.name.trim() }]);
-      if (error) alert('Gagal tambah kategori: ' + error.message);
-      else fetchCategories();
+      await supabase.from('categories').insert([{ name: categoryForm.name.trim() }]);
     }
     setCategoryForm({ id: null, name: '' });
+    fetchCategories();
   };
 
-  const handleEditCategoryClick = (cat) => { setCategoryForm(cat); setIsEditingCategory(true); };
-  const handleDeleteCategory = async (id) => {
-    if (confirm('Yakin ingin menghapus kategori ini?')) {
-      const { error } = await supabase.from('categories').delete().eq('id', id);
-      if (error) alert('Gagal hapus kategori: ' + error.message);
-      else fetchCategories();
-    }
-  };
-
-  // --- Handler Upload Gambar ke Supabase Storage ---
-  const handleImageUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    try {
-      setUploadingImage(true);
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}.${fileExt}`;
-      const filePath = `menus/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('menu-images')
-        .upload(filePath, file);
-
-      if (uploadError) throw uploadError;
-
-      const { data } = supabase.storage.from('menu-images').getPublicUrl(filePath);
-      setMenuForm((prev) => ({ ...prev, image_url: data.publicUrl }));
-    } catch (error) {
-      alert('Gagal mengunggah gambar: ' + error.message);
-    } finally {
-      setUploadingImage(false);
-    }
-  };
-  
-  // --- 3. Manajemen Menu CRUD ---
   const handleSaveMenu = async (e) => {
     e.preventDefault();
-    if (!menuForm.name || !menuForm.price) return alert('Nama dan Harga wajib diisi!');
-    const categoryToSave = menuForm.category || (categories[0]?.name || 'Makanan');
-    const parsedPrice = Number(menuForm.price);
-
-    if (isEditingMenu) {
-      const { error } = await supabase
-        .from('menu_list')
-        .update({ 
-          name: menuForm.name, 
-          price: parsedPrice, 
-          category: categoryToSave,
-          image_url: menuForm.image_url 
-        })
-        .eq('id', menuForm.id);
-
-      if (error) alert('Gagal update menu: ' + error.message);
-      else setIsEditingMenu(false);
-    } else {
-      const { error } = await supabase
-        .from('menu_list')
-        .insert([{ 
-          name: menuForm.name, 
-          price: parsedPrice, 
-          category: categoryToSave,
-          image_url: menuForm.image_url 
-        }]);
-
-      if (error) alert('Gagal tambah menu: ' + error.message);
-    }
-
-    setMenuForm({ id: null, name: '', price: '', category: categories[0]?.name || '', image_url: '' });
-  };
-
-  const handleEditMenuClick = (item) => { 
-    setMenuForm({
-      id: item.id,
-      name: item.name,
-      price: item.price,
-      category: item.category,
-      image_url: item.image_url || ''
-    }); 
-    setIsEditingMenu(true); 
-  };
-
-  const handleDeleteMenu = async (id) => {
-    if (confirm('Yakin ingin menghapus menu ini?')) {
-      const targetMenu = menuList.find(m => m.id === id);
-      if (targetMenu?.image_url) {
-        const path = targetMenu.image_url.split('/menu-images/')[1];
-        if (path) await supabase.storage.from('menu-images').remove([path]);
-      }
-
-      const { error } = await supabase.from('menu_list').delete().eq('id', id);
-      if (error) alert('Gagal hapus menu: ' + error.message);
-    }
-  };
-
-  // --- 4. Manajemen Promo Diskon CRUD ---
-  const handleSaveDiscountRule = async (e) => {
-    e.preventDefault();
-    if (!discountForm.menuId) return alert('Pilih menu terlebih dahulu!');
-
-    const selectedMenuId = Number(discountForm.menuId);
-    const targetMenu = menuList.find(m => m.id === selectedMenuId);
-    if (!targetMenu) return alert('Menu tidak ditemukan!');
-
+    if (!menuForm.name || !menuForm.price) return alert('Isi data menu!');
     const payload = {
-      menu_id: selectedMenuId,
-      menu_name: targetMenu.name,
-      min_qty: Number(discountForm.minQty) || 1,
-      discount_amount: Number(discountForm.discountAmount) || 0
+      name: menuForm.name,
+      price: Number(menuForm.price),
+      category: menuForm.category || categories[0]?.name || 'Makanan',
+      image_url: menuForm.image_url
     };
-
-    if (isEditingDiscount && discountForm.id) {
-      const { error } = await supabase.from('discount_rules').update(payload).eq('id', discountForm.id);
-      if (error) alert('Gagal update promo: ' + error.message);
-      else setIsEditingDiscount(false);
+    if (isEditingMenu) {
+      await supabase.from('menu_list').update(payload).eq('id', menuForm.id);
+      setIsEditingMenu(false);
     } else {
-      const { error } = await supabase.from('discount_rules').insert([payload]);
-      if (error) alert('Gagal buat promo: ' + error.message);
+      await supabase.from('menu_list').insert([payload]);
     }
-    setDiscountForm({ id: null, menuId: '', minQty: 1, discountAmount: 0 });
+    setMenuForm({ id: null, name: '', price: '', category: categories[0]?.name || '', image_url: '' });
+    fetchMenuList();
   };
 
-  const handleEditDiscountClick = (rule) => {
-    setDiscountForm({ id: rule.id, menuId: rule.menuId, minQty: rule.minQty, discountAmount: rule.discountAmount });
-    setIsEditingDiscount(true);
-  };
-  const handleDeleteDiscountRule = async (id) => {
-    if (confirm('Hapus rule promo ini?')) {
-      const { error } = await supabase.from('discount_rules').delete().eq('id', id);
-      if (error) alert('Gagal hapus promo: ' + error.message);
-    }
-  };
-
-  // --- 5. Alur Operasional POS (Dine-In) ---
-  const handleSelectTable = (table) => { setSelectedTable(table); };
-
+  // --- Operational POS Handlers ---
   const handleOpenTable = async () => {
     if (!selectedTable) return;
     const tableId = selectedTable.id;
-
-    try {
-      const { data: sessionData, error: sessionErr } = await supabase
-        .from('table_sessions').insert([{ table_id: tableId, status: 'open' }]).select().single();
-      if (sessionErr) throw sessionErr;
-
-      const { error: orderErr } = await supabase
-        .from('orders').insert([{ session_id: sessionData.id, table_id: tableId, order_type: 'dine-in', status: 'active' }]);
-      if (orderErr) throw orderErr;
-
-      const { error: tableErr } = await supabase.from('tables').update({ status: 'occupied' }).eq('id', tableId);
-      if (tableErr) throw tableErr;
-
-      fetchTables();
-      fetchActiveOrders();
-      setSelectedTable(prev => ({ ...prev, status: 'occupied' }));
-    } catch (err) {
-      alert('Gagal Open Table: ' + (err.message || 'Terjadi kesalahan'));
-    }
-  };
-
-  const handleCancelOpenTable = async () => {
-    if (!selectedTable) return;
-    const tableId = selectedTable.id;
-    const sessionId = activeSessions[tableId];
-
-    try {
-      if (sessionId) {
-        await supabase.from('table_sessions').update({ status: 'closed' }).eq('id', sessionId);
-        await supabase.from('orders').update({ status: 'completed' }).eq('session_id', sessionId);
-      } else {
-        await supabase.from('orders').update({ status: 'completed' }).eq('table_id', tableId).eq('status', 'active');
-      }
-
-      await supabase.from('tables').update({ status: 'available' }).eq('id', tableId);
-      setCurrentCart(prev => { const updated = { ...prev }; delete updated[tableId]; return updated; });
-
-      fetchTables();
-      fetchActiveOrders();
-      setSelectedTable(prev => ({ ...prev, status: 'available' }));
-    } catch (err) {
-      alert('Gagal membatalkan open table: ' + err.message);
-    }
-  };
-
-  const handleConfirmPosDineInAddToCart = () => {
-    if (!posDineInSelectedItem || !selectedTable || selectedTable.status !== 'occupied') return;
-
-    const tableId = selectedTable.id;
-    const cart = currentCart[tableId] || [];
-
-    const itemWithOptions = {
-      ...posDineInSelectedItem,
-      options: {
-        ice: posDineInIce,
-        sugar: posDineInSugar
-      }
-    };
-
-    const existingIndex = cart.findIndex(
-      item => item.id === itemWithOptions.id &&
-              item.options?.ice === posDineInIce &&
-              item.options?.sugar === posDineInSugar
-    );
-
-    if (existingIndex > -1) {
-      const updated = cart.map((item, idx) =>
-        idx === existingIndex ? { ...item, qty: item.qty + 1 } : item
-      );
-      setCurrentCart(prev => ({ ...prev, [tableId]: updated }));
-    } else {
-      setCurrentCart(prev => ({ ...prev, [tableId]: [...cart, { ...itemWithOptions, qty: 1 }] }));
-    }
-
-    setShowPosDineInOptionModal(false);
-    setPosDineInSelectedItem(null);
-  };
-  
-  const handleAddToCart = (menuItem) => {
-    if (!selectedTable || selectedTable.status !== 'occupied') return;
-    const tableId = selectedTable.id;
-    const cart = currentCart[tableId] || [];
-    const existingIndex = cart.findIndex(item => item.id === menuItem.id);
-    let updatedCart = [];
-
-    if (existingIndex > -1) {
-      updatedCart = cart.map((item, idx) => idx === existingIndex ? { ...item, qty: item.qty + 1 } : item);
-    } else {
-      updatedCart = [...cart, { ...menuItem, qty: 1 }];
-    }
-    setCurrentCart(prev => ({ ...prev, [tableId]: updatedCart }));
-  };
-
-  const handleRemoveFromCart = (itemId) => {
-    if (!selectedTable) return;
-    const tableId = selectedTable.id;
-    const cart = currentCart[tableId] || [];
-    setCurrentCart(prev => ({ ...prev, [tableId]: cart.filter(item => item.id !== itemId) }));
+    const { data: sessionData } = await supabase.from('table_sessions').insert([{ table_id: tableId, status: 'open' }]).select().single();
+    await supabase.from('orders').insert([{ session_id: sessionData.id, table_id: tableId, order_type: 'dine-in', status: 'active' }]);
+    await supabase.from('tables').update({ status: 'occupied' }).eq('id', tableId);
+    fetchTables();
+    fetchActiveOrders();
   };
 
   const handleConfirmOrder = async () => {
     if (!selectedTable) return;
     const tableId = selectedTable.id;
     const cart = currentCart[tableId] || [];
-    if (cart.length === 0) return alert('Keranjang pesanan masih kosong!');
+    if (cart.length === 0) return alert('Keranjang kosong!');
 
     try {
-      const { data: activeOrders, error: orderErr } = await supabase
-        .from('orders').select('id').eq('table_id', tableId).eq('order_type', 'dine-in').eq('status', 'active')
-        .order('created_at', { ascending: false }).limit(1);
-      if (orderErr) throw orderErr;
+      const { data: activeOrders } = await supabase
+        .from('orders').select('id').eq('table_id', tableId).eq('order_type', 'dine-in').eq('status', 'active').limit(1);
 
-      if (!activeOrders || activeOrders.length === 0) {
-        return alert('Sesi order meja tidak ditemukan! Silakan Cancel Open Table lalu Open Table kembali.');
-      }
+      if (!activeOrders || activeOrders.length === 0) return alert('Buka meja terlebih dahulu!');
 
       const activeOrderId = activeOrders[0].id;
-      const { data: batchData, error: batchErr } = await supabase
-        .from('order_batches').insert([{ order_id: activeOrderId }]).select().single();
-      if (batchErr) throw batchErr;
+      const { data: batchData } = await supabase.from('order_batches').insert([{ order_id: activeOrderId }]).select().single();
 
       const itemsToInsert = cart.map(item => ({
         order_id: activeOrderId,
@@ -775,17 +389,17 @@ export default function App() {
         menu_name: item.name,
         price: item.price,
         qty: item.qty,
-        category: item.category || 'Makanan'
+        category: item.category || 'Makanan',
+        options: item.options || {},
+        notes: item.notes || ''
       }));
 
-      const { error: itemsErr } = await supabase.from('order_items').insert(itemsToInsert);
-      if (itemsErr) throw itemsErr;
-
+      await supabase.from('order_items').insert(itemsToInsert);
       setCurrentCart(prev => ({ ...prev, [tableId]: [] }));
       fetchActiveOrders();
-      alert('Order berhasil dikonfirmasi & dikirim ke Printer Dapur!');
+      alert('Order berhasil dikirim ke Printer Dapur!');
     } catch (err) {
-      alert('Gagal Confirm Order: ' + (err.message || 'Terjadi kesalahan'));
+      alert('Gagal Confirm Order: ' + err.message);
     }
   };
 
@@ -795,10 +409,11 @@ export default function App() {
 
     batches.forEach(b => {
       (b.items || []).forEach(it => {
-        if (recapMap[it.name]) {
-          recapMap[it.name].qty += it.qty;
+        const itemKey = `${it.name}-${JSON.stringify(it.options)}-${it.notes}`;
+        if (recapMap[itemKey]) {
+          recapMap[itemKey].qty += it.qty;
         } else {
-          recapMap[it.name] = { ...it, name: it.name };
+          recapMap[itemKey] = { ...it };
         }
       });
     });
@@ -806,563 +421,179 @@ export default function App() {
     const recapList = Object.values(recapMap);
     const subTotal = recapList.reduce((sum, item) => sum + (item.price * item.qty), 0);
     const autoDiscount = calculateAutoDiscount(recapList);
-    const finalTotal = Math.max(0, subTotal - autoDiscount);
-
-    return { recapList, subTotal, autoDiscount, finalTotal, batches };
+    return { recapList, subTotal, autoDiscount, finalTotal: Math.max(0, subTotal - autoDiscount), batches };
   };
 
-  const handleCloseTableClick = () => {
-    if (!selectedTable) return;
-    const { finalTotal, batches } = getTableRecap(selectedTable.id);
-
-    if (finalTotal === 0 || batches.length === 0) {
-      if (confirm("Tidak ada tagihan pada meja ini. Tutup dan kosongkan meja sekarang?")) {
-        handlePaymentSuccess(true);
-      }
-    } else {
-      setShowCheckoutModal(true);
-    }
-  };
-
-  const handlePaymentSuccess = async (isZeroPayment = false) => {
+  const handlePaymentSuccess = async () => {
     if (!selectedTable) return;
     const tableId = selectedTable.id;
-    const sessionId = activeSessions[tableId];
     const { subTotal, autoDiscount, finalTotal } = getTableRecap(tableId);
 
-    try {
-      const { error: orderErr } = await supabase
-        .from('orders')
-        .update({ subtotal: subTotal, discount: autoDiscount, total_amount: finalTotal, is_paid: true, status: 'completed' })
-        .eq('table_id', tableId).eq('status', 'active');
-      if (orderErr) throw orderErr;
+    await supabase.from('orders').update({ subtotal: subTotal, discount: autoDiscount, total_amount: finalTotal, is_paid: true, status: 'completed' })
+      .eq('table_id', tableId).eq('status', 'active');
+    await supabase.from('table_sessions').update({ status: 'closed' }).eq('id', activeSessions[tableId]);
+    await supabase.from('tables').update({ status: 'available' }).eq('id', tableId);
 
-      if (sessionId) await supabase.from('table_sessions').update({ status: 'closed' }).eq('id', sessionId);
-      await supabase.from('tables').update({ status: 'available' }).eq('id', tableId);
-
-      setCurrentCart(prev => { const n = { ...prev }; delete n[tableId]; return n; });
-      fetchTables();
-      fetchActiveOrders();
-
-      if (!isZeroPayment) alert('Pembayaran Sukses! Struk Berhasil Dicetak.');
-      setSelectedTable(prev => ({ ...prev, status: 'available' }));
-      setShowCheckoutModal(false);
-    } catch (err) {
-      alert('Gagal menutup meja: ' + err.message);
-    }
-  };
-
-  // --- 6. Alur Operasional Takeaway ---
-  const handleAddToTakeawayCart = (menuItem) => {
-    const existingIndex = takeawayCart.findIndex(item => item.id === menuItem.id);
-    if (existingIndex > -1) {
-      setTakeawayCart(takeawayCart.map((item, idx) => idx === existingIndex ? { ...item, qty: item.qty + 1 } : item));
-    } else {
-      setTakeawayCart([...takeawayCart, { ...menuItem, qty: 1 }]);
-    }
-  };
-
-  const handleRemoveFromTakeawayCart = (itemId) => {
-    setTakeawayCart(takeawayCart.filter(item => item.id !== itemId));
+    setCurrentCart(prev => { const n = { ...prev }; delete n[tableId]; return n; });
+    setShowCheckoutModal(false);
+    fetchTables();
+    fetchActiveOrders();
+    alert('Pembayaran Berhasil!');
   };
 
   const handleConfirmTakeawayOrder = async () => {
     if (takeawayCart.length === 0) return alert('Keranjang Takeaway kosong!');
-
-    let generatedOrderNo = '';
-    if (takeawayPlatform === 'On Site') {
-      generatedOrderNo = `#${String(autoTakeawayCounter).padStart(3, '0')}`;
-      setAutoTakeawayCounter(prev => prev + 1);
-    } else {
-      if (!takeawayOrderNoInput.trim()) return alert('Masukkan Nomor Orderan Aplikasi terlebih dahulu!');
-      generatedOrderNo = `#${takeawayOrderNoInput.trim()}`;
-    }
+    const generatedOrderNo = takeawayPlatform === 'On Site' ? `#${String(autoTakeawayCounter).padStart(3, '0')}` : `#${takeawayOrderNoInput.trim()}`;
+    if (takeawayPlatform === 'On Site') setAutoTakeawayCounter(prev => prev + 1);
 
     const subTotal = takeawayCart.reduce((sum, item) => sum + (item.price * item.qty), 0);
     const autoDiscount = calculateAutoDiscount(takeawayCart);
-    const totalAmount = Math.max(0, subTotal - autoDiscount);
 
-    const { data: orderData, error: orderErr } = await supabase
-      .from('orders')
-      .insert([{
-        order_type: 'takeaway', order_no: generatedOrderNo, platform: takeawayPlatform,
-        customer_name: takeawayCustomerName || 'Pelanggan', subtotal: subTotal,
-        discount: autoDiscount, total_amount: totalAmount, is_paid: false, status: 'active'
-      }])
-      .select().single();
-
-    if (orderErr) return alert('Gagal menyimpan order takeaway: ' + orderErr.message);
+    const { data: orderData } = await supabase.from('orders').insert([{
+      order_type: 'takeaway', order_no: generatedOrderNo, platform: takeawayPlatform,
+      customer_name: takeawayCustomerName || 'Pelanggan', subtotal: subTotal, discount: autoDiscount,
+      total_amount: Math.max(0, subTotal - autoDiscount), is_paid: false, status: 'active'
+    }]).select().single();
 
     const itemsToInsert = takeawayCart.map(item => ({
-      order_id: orderData.id, menu_id: item.id, menu_name: item.name, price: item.price, qty: item.qty, category: item.category || 'Makanan'
+      order_id: orderData.id, menu_id: item.id, menu_name: item.name, price: item.price, qty: item.qty,
+      category: item.category || 'Makanan', options: item.options || {}, notes: item.notes || ''
     }));
 
-    const { error: itemsErr } = await supabase.from('order_items').insert(itemsToInsert);
-    if (itemsErr) return alert('Gagal menyimpan item takeaway: ' + itemsErr.message);
-
+    await supabase.from('order_items').insert(itemsToInsert);
     setTakeawayCart([]);
     setTakeawayCustomerName('');
     setTakeawayOrderNoInput('');
     fetchActiveOrders();
-    alert(`Order ${generatedOrderNo} Berhasil Dikonfirmasi & Dicetak ke Dapur!`);
-  };
-
-  const handlePayTakeaway = async (order) => {
-    const { error } = await supabase
-      .from('orders')
-      .update({ subtotal: order.subTotal, discount: order.discount, total_amount: order.total, is_paid: true })
-      .eq('id', order.id);
-
-    if (error) return alert('Gagal konfirmasi pembayaran: ' + error.message);
-    setShowTakeawayPaymentModal(false);
-    fetchActiveOrders();
-    alert(`Pembayaran Order ${order.orderNo} Sukses & Struk Dicetak!`);
-  };
-
-  const handleCompleteTakeaway = async (orderId) => {
-    if (confirm('Selesaikan & keluarkan orderan ini dari daftar antrean?')) {
-      const { error } = await supabase.from('orders').update({ status: 'completed' }).eq('id', orderId);
-      if (error) return alert('Gagal menyelesaikan order: ' + error.message);
-      fetchActiveOrders();
-    }
-  };
-
-  // --- 7. SELF ORDER CUSTOMER LOGIC ---
-  const handleAddSelfOrderCart = (menuItem) => {
-    const existingIndex = selfOrderCart.findIndex(item => item.id === menuItem.id);
-    if (existingIndex > -1) {
-      setSelfOrderCart(selfOrderCart.map((item, idx) => idx === existingIndex ? { ...item, qty: item.qty + 1 } : item));
-    } else {
-      setSelfOrderCart([...selfOrderCart, { ...menuItem, qty: 1 }]);
-    }
-  };
-
-  const handleRemoveSelfOrderCart = (itemId) => {
-    setSelfOrderCart(selfOrderCart.filter(item => item.id !== itemId));
-  };
-
-  const handleSelfOrderSubmit = async () => {
-    if (selfOrderCart.length === 0) return alert('Keranjang belanja Anda masih kosong!');
-    const tableId = Number(selfOrderTableId);
-
-    try {
-      let activeOrderId = null;
-      const { data: existingActiveOrders } = await supabase
-        .from('orders')
-        .select('id, session_id')
-        .eq('table_id', tableId)
-        .eq('order_type', 'dine-in')
-        .eq('status', 'active')
-        .limit(1);
-
-      if (existingActiveOrders && existingActiveOrders.length > 0) {
-        activeOrderId = existingActiveOrders[0].id;
-      } else {
-        const { data: sessionData, error: sErr } = await supabase
-          .from('table_sessions')
-          .insert([{ table_id: tableId, status: 'open' }])
-          .select()
-          .single();
-        if (sErr) throw sErr;
-
-        const { data: newOrderData, error: oErr } = await supabase
-          .from('orders')
-          .insert([{ session_id: sessionData.id, table_id: tableId, order_type: 'dine-in', status: 'active' }])
-          .select()
-          .single();
-        if (oErr) throw oErr;
-
-        await supabase.from('tables').update({ status: 'occupied' }).eq('id', tableId);
-        activeOrderId = newOrderData.id;
-      }
-
-      const { data: batchData, error: bErr } = await supabase
-        .from('order_batches')
-        .insert([{ order_id: activeOrderId }])
-        .select()
-        .single();
-      if (bErr) throw bErr;
-
-      const itemsToInsert = selfOrderCart.map(item => ({
-        order_id: activeOrderId,
-        batch_id: batchData.id,
-        menu_id: item.id,
-        menu_name: item.name,
-        price: item.price,
-        qty: item.qty,
-        category: item.category || 'Makanan'
-      }));
-
-      const { error: itemsErr } = await supabase.from('order_items').insert(itemsToInsert);
-      if (itemsErr) throw itemsErr;
-
-      setSelfOrderCart([]);
-      fetchActiveOrders();
-      alert('Pesanan Anda berhasil dikirim ke Dapur! Silakan tunggu hidangan Anda disajikan.');
-    } catch (err) {
-      alert('Gagal Mengirim Pesanan: ' + (err.message || 'Terjadi kesalahan'));
-    }
+    alert(`Order ${generatedOrderNo} berhasil dikirim ke Dapur!`);
   };
 
   // Calculations Dine-In
   const activeTableId = selectedTable?.id;
   const activeTableStatus = selectedTable?.status;
   const cartItems = activeTableId ? (currentCart[activeTableId] || []) : [];
-  const { recapList, subTotal, autoDiscount, batches } = activeTableId ? getTableRecap(activeTableId) : { recapList: [], subTotal: 0, autoDiscount: 0, batches: [] };
-  const finalTotal = Math.max(0, subTotal - autoDiscount);
+  const { recapList, subTotal, autoDiscount, batches, finalTotal } = activeTableId ? getTableRecap(activeTableId) : { recapList: [], subTotal: 0, autoDiscount: 0, batches: [], finalTotal: 0 };
 
-  const filteredMenuList = selectedCategoryFilter === 'Semua' 
-    ? menuList 
-    : menuList.filter(m => m.category === selectedCategoryFilter);
-
-  // ================= TAMPILAN PAGE SELF ORDER PELANGGAN (VIA QR) =================
   if (selfOrderTableId) {
     return <CustomerOrder tableId={selfOrderTableId} />;
   }
 
-  // ================= TAMPILAN DASHBOARD POS KASIR & OWNER =================
   return (
     <div style={styles.appContainer}>
-      {/* Header Bar */}
+      {/* Header */}
       <header style={styles.header}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={styles.logoBadge}>TT</div>
           <h1 style={styles.headerTitle}>TableTalk POS</h1>
-          
           {userRole === 'cashier' && (
             <div style={{ display: 'flex', gap: '4px', marginLeft: '20px' }}>
-              <button 
-                style={posMode === 'dine-in' ? styles.activeModeNavBtn : styles.modeNavBtn} 
-                onClick={() => setPosMode('dine-in')}
-              >
-                🍽️ Dine-In (Meja)
-              </button>
-              <button 
-                style={posMode === 'takeaway' ? styles.activeModeNavBtn : styles.modeNavBtn} 
-                onClick={() => setPosMode('takeaway')}
-              >
-                🛵 Takeaway / Online
-              </button>
+              <button style={posMode === 'dine-in' ? styles.activeModeNavBtn : styles.modeNavBtn} onClick={() => setPosMode('dine-in')}>🍽️ Dine-In</button>
+              <button style={posMode === 'takeaway' ? styles.activeModeNavBtn : styles.modeNavBtn} onClick={() => setPosMode('takeaway')}>🛵 Takeaway</button>
             </div>
           )}
         </div>
-
         <div style={{ display: 'flex', gap: '8px' }}>
           <button style={userRole === 'cashier' ? styles.activeRoleBtn : styles.roleBtn} onClick={() => handleRoleChangeRequest('cashier')}>Kasir Mode</button>
           <button style={userRole === 'owner' ? styles.activeRoleBtn : styles.roleBtn} onClick={() => handleRoleChangeRequest('owner')}>Owner Mode</button>
         </div>
       </header>
 
-      {/* Mode Owner */}
       {userRole === 'owner' ? (
-        <div style={{ padding: '24px', overflowY: 'auto', flex: 1, boxSizing: 'border-box' }}>
-          <h2 style={{ marginTop: 0 }}>Panel Owner - Pengaturan Sistem</h2>
-          
-          {/* 1. Kelola Meja CRUD */}
+        /* ================= OWNER MODE ================= */
+        <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
+          <h2>Panel Owner - Pengaturan Sistem</h2>
+
+          {/* Pengaturan Kategori & Opsi Ice/Sugar */}
           <div style={styles.ownerCard}>
-            <h3>{isEditingTable ? 'Edit Meja' : 'Tambah Meja Baru'}</h3>
-            <form onSubmit={handleSaveTable} style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
-              <input 
-                type="text" 
-                placeholder="Nama / Nomor Meja (contoh: Meja 06 / VIP 1)" 
-                value={tableForm.number} 
-                onChange={(e) => setTableForm({ ...tableForm, number: e.target.value })}
-                style={styles.inputField}
-              />
-              <button type="submit" style={{ ...styles.primaryBtn, background: isEditingTable ? '#f59e0b' : '#3b82f6' }}>
-                {isEditingTable ? 'Simpan Nama Meja' : '+ Tambah Meja'}
-              </button>
-              {isEditingTable && (
-                <button type="button" style={styles.dangerOutlineBtn} onClick={() => { setIsEditingTable(false); setTableForm({ id: null, number: '' }); }}>
-                  Batal
-                </button>
-              )}
-            </form>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '12px' }}>
-              {tables.map(t => {
-                const tableQrUrl = `${window.location.origin}?table=${t.id}`;
-
-                return (
-                  <div key={t.id} style={{ ...styles.cartRow, flexDirection: 'column', alignItems: 'center', padding: '12px', gap: '10px' }}>
-                    <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <strong>{t.number}</strong>
-                      <div>
-                        <button style={{ ...styles.roleBtn, color: '#f59e0b', padding: '2px 6px' }} onClick={() => handleEditTableClick(t)}>Edit</button>
-                        <button style={{ ...styles.deleteBtn, padding: '2px 6px' }} onClick={() => handleDeleteTable(t.id)}>Hapus</button>
-                      </div>
-                    </div>
-
-                    <div style={{ background: '#fff', padding: '8px', borderRadius: '8px', display: 'flex', justifyContent: 'center' }}>
-                      <QRCodeSVG 
-                        id={`qr-svg-${t.number}`}
-                        value={tableQrUrl}
-                        size={120}
-                        level="H"
-                        includeMargin={true}
-                      />
-                    </div>
-
-                    <button 
-                      type="button"
-                      style={{ ...styles.primaryBtn, width: '100%', padding: '6px', fontSize: '12px', background: '#10b981' }}
-                      onClick={() => handleDownloadQR(t.number)}
-                    >
-                      📥 Download QR Code
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 2. Kelola Kategori Menu CRUD */}
-          <div style={styles.ownerCard}>
-            <h3>{isEditingCategory ? 'Edit Kategori Menu' : 'Tambah Kategori Menu Baru'}</h3>
-            <form onSubmit={handleSaveCategory} style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
-              <input 
-                type="text" 
-                placeholder="Nama Kategori (contoh: Dessert, Snacks, Coffee)" 
-                value={categoryForm.name} 
-                onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
-                style={styles.inputField}
-              />
-              <button type="submit" style={{ ...styles.primaryBtn, background: isEditingCategory ? '#f59e0b' : '#3b82f6' }}>
-                {isEditingCategory ? 'Simpan Kategori' : '+ Tambah Kategori'}
-              </button>
-              {isEditingCategory && (
-                <button type="button" style={styles.dangerOutlineBtn} onClick={() => { setIsEditingCategory(false); setCategoryForm({ id: null, name: '' }); }}>
-                  Batal
-                </button>
-              )}
-            </form>
-
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+            <h3>Pengaturan Kategori & Fitur Opsi (Ice / Sugar Level)</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {categories.map(cat => (
-                <div key={cat.id} style={{ ...styles.cartRow, gap: '8px' }}>
-                  <span><strong>{cat.name}</strong></span>
-                  <button style={{ ...styles.roleBtn, color: '#f59e0b', padding: '2px 6px' }} onClick={() => handleEditCategoryClick(cat)}>Edit</button>
-                  <button style={{ ...styles.deleteBtn, padding: '2px 6px' }} onClick={() => handleDeleteCategory(cat.id)}>Hapus</button>
+                <div key={cat.id} style={{ borderBottom: '1px solid #334155', paddingBottom: '10px' }}>
+                  <div style={{ fontWeight: 'bold', fontSize: '15px', color: '#38bdf8' }}>{cat.name}</div>
+                  <div style={{ fontSize: '12px', color: '#94a3b8', margin: '4px 0' }}>Opsi yang diaktifkan untuk kategori ini:</div>
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    {masterOptions.map(opt => {
+                      const isChecked = (cat.allowed_options || []).includes(opt.title);
+                      return (
+                        <label key={opt.id} style={{ fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => handleToggleCategoryOption(cat, opt.title)}
+                          />
+                          {opt.title}
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* 3. Kelola Menu CRUD */}
+          {/* Kelola Menu */}
           <div style={styles.ownerCard}>
             <h3>{isEditingMenu ? 'Edit Menu' : 'Tambah Menu Baru'}</h3>
             <form onSubmit={handleSaveMenu} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '16px' }}>
-              <input 
-                type="text" 
-                placeholder="Nama Menu" 
-                value={menuForm.name} 
-                onChange={(e) => setMenuForm({ ...menuForm, name: e.target.value })}
-                style={styles.inputField}
-              />
-              <input 
-                type="number" 
-                placeholder="Harga (Rp)" 
-                value={menuForm.price} 
-                onChange={(e) => setMenuForm({ ...menuForm, price: e.target.value })}
-                style={styles.inputField}
-              />
-              <select 
-                value={menuForm.category} 
-                onChange={(e) => setMenuForm({ ...menuForm, category: e.target.value })}
-                style={styles.inputField}
-              >
-                {categories.map(c => (
-                  <option key={c.id} value={c.name}>{c.name}</option>
-                ))}
+              <input type="text" placeholder="Nama Menu" value={menuForm.name} onChange={e => setMenuForm({ ...menuForm, name: e.target.value })} style={styles.inputField} />
+              <input type="number" placeholder="Harga (Rp)" value={menuForm.price} onChange={e => setMenuForm({ ...menuForm, price: e.target.value })} style={styles.inputField} />
+              <select value={menuForm.category} onChange={e => setMenuForm({ ...menuForm, category: e.target.value })} style={styles.inputField}>
+                {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
               </select>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <input 
-                  type="file" 
-                  accept="image/*" 
-                  onChange={handleImageUpload} 
-                  disabled={uploadingImage}
-                  style={{ fontSize: '12px', color: '#94a3b8' }}
-                />
-                {uploadingImage && <span style={{ fontSize: '12px', color: '#f59e0b' }}>Uploading...</span>}
-                {menuForm.image_url && (
-                  <img 
-                    src={menuForm.image_url} 
-                    alt="Preview" 
-                    style={{ width: '36px', height: '36px', borderRadius: '6px', objectFit: 'cover' }} 
-                  />
-                )}
-              </div>
-
-              <button type="submit" style={{ ...styles.primaryBtn, background: isEditingMenu ? '#f59e0b' : '#3b82f6' }}>
-                {isEditingMenu ? 'Simpan Menu' : '+ Tambah Menu'}
-              </button>
-
-              {isEditingMenu && (
-                <button 
-                  type="button" 
-                  style={styles.dangerOutlineBtn} 
-                  onClick={() => { 
-                    setIsEditingMenu(false); 
-                    setMenuForm({ id: null, name: '', price: '', category: categories[0]?.name || '', image_url: '' }); 
-                  }}
-                >
-                  Batal
-                </button>
-              )}
+              <button type="submit" style={styles.primaryBtn}>{isEditingMenu ? 'Simpan' : '+ Tambah Menu'}</button>
             </form>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {menuList.length === 0 ? (
-                <p style={styles.mutedText}>Belum ada menu di database Supabase.</p>
-              ) : (
-                menuList.map(item => (
-                  <div key={item.id} style={styles.cartRow}>
-                    {item.image_url && (
-                      <img 
-                        src={item.image_url} 
-                        alt={item.name} 
-                        style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover', marginRight: '10px' }} 
-                      />
-                    )}
-                    <div style={{ flex: 1 }}>
-                      <strong>{item.name}</strong> - <span style={{ color: '#34d399' }}>Rp {Number(item.price).toLocaleString()}</span> <span style={{ color: '#60a5fa' }}>({item.category})</span>
-                    </div>
-                    <button style={{ ...styles.roleBtn, color: '#f59e0b', marginRight: '8px' }} onClick={() => handleEditMenuClick(item)}>Edit</button>
-                    <button style={styles.deleteBtn} onClick={() => handleDeleteMenu(item.id)}>Hapus</button>
-                  </div>
-                ))
-              )}
+              {menuList.map(item => (
+                <div key={item.id} style={styles.cartRow}>
+                  <div style={{ flex: 1 }}><strong>{item.name}</strong> - Rp {Number(item.price).toLocaleString()} ({item.category})</div>
+                  <button style={{ ...styles.roleBtn, color: '#f59e0b' }} onClick={() => { setMenuForm(item); setIsEditingMenu(true); }}>Edit</button>
+                  <button style={styles.deleteBtn} onClick={async () => { await supabase.from('menu_list').delete().eq('id', item.id); fetchMenuList(); }}>Hapus</button>
+                </div>
+              ))}
             </div>
           </div>
-
-          {/* 4. Kelola Promo Diskon Otomatis */}
-          <div style={styles.ownerCard}>
-            <h3>{isEditingDiscount ? 'Edit Rule Promo Diskon' : 'Pengaturan Rule Promo Diskon Otomatis'}</h3>
-            <form onSubmit={handleSaveDiscountRule} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '16px' }}>
-              <select 
-                value={discountForm.menuId} 
-                onChange={(e) => setDiscountForm({ ...discountForm, menuId: e.target.value })}
-                style={styles.inputField}
-              >
-                <option value="">-- Pilih Menu Trigger --</option>
-                {menuList.map(m => (
-                  <option key={m.id} value={m.id}>{m.name} (Rp {Number(m.price).toLocaleString()})</option>
-                ))}
-              </select>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '13px' }}>Min Qty:</span>
-                <input 
-                  type="number" 
-                  min="1" 
-                  value={discountForm.minQty} 
-                  onChange={(e) => setDiscountForm({ ...discountForm, minQty: e.target.value })}
-                  style={{ ...styles.inputField, width: '80px' }}
-                />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '13px' }}>Potongan (Rp):</span>
-                <input 
-                  type="number" 
-                  placeholder="Nominal Diskon" 
-                  value={discountForm.discountAmount} 
-                  onChange={(e) => setDiscountForm({ ...discountForm, discountAmount: e.target.value })}
-                  style={{ ...styles.inputField, width: '140px' }}
-                />
-              </div>
-              <button type="submit" style={{ ...styles.primaryBtn, background: isEditingDiscount ? '#f59e0b' : '#3b82f6' }}>
-                {isEditingDiscount ? 'Simpan Promo' : '+ Simpan Rule Promo'}
-              </button>
-              {isEditingDiscount && (
-                <button 
-                  type="button" 
-                  style={styles.dangerOutlineBtn} 
-                  onClick={() => { 
-                    setIsEditingDiscount(false); 
-                    setDiscountForm({ id: null, menuId: '', minQty: 1, discountAmount: 0 }); 
-                  }}
-                >
-                  Batal
-                </button>
-              )}
-            </form>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {discountRules.length === 0 ? (
-                <p style={styles.mutedText}>Belum ada rule promo dibuat.</p>
-              ) : (
-                discountRules.map(r => (
-                  <div key={r.id} style={styles.cartRow}>
-                    <div style={{ flex: 1 }}>
-                      Beli <strong>{r.menuName}</strong> qty min <strong>{r.minQty}x</strong> 👉 Diskon Otomatis <strong>Rp {r.discountAmount.toLocaleString()}</strong> (Berlaku Kelipatan)
-                    </div>
-                    <button 
-                      style={{ ...styles.roleBtn, color: '#f59e0b', marginRight: '8px' }} 
-                      onClick={() => handleEditDiscountClick(r)}
-                    >
-                      Edit
-                    </button>
-                    <button style={styles.deleteBtn} onClick={() => handleDeleteDiscountRule(r.id)}>Hapus</button>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
         </div>
       ) : (
-        /* Mode Kasir */
+        /* ================= KASIR MODE ================= */
         <div style={styles.mainLayout}>
           {posMode === 'dine-in' ? (
-            /* ================= DINE-IN MODE ================= */
             <>
+              {/* Dine-In Left Panel */}
               <div style={styles.leftPanel}>
-                <div style={{ marginBottom: '24px' }}>
-                  <h3 style={styles.sectionTitle}>Status Meja</h3>
-                  <div style={styles.tableGrid}>
-                    {tables.map(t => {
-                      const isSelected = selectedTable?.id === t.id;
-                      const isOccupied = t.status === 'occupied';
-                      return (
-                        <div
-                          key={t.id}
-                          onClick={() => handleSelectTable(t)}
-                          style={{
-                            ...styles.tableCard,
-                            borderColor: isSelected ? '#3b82f6' : isOccupied ? '#ef4444' : '#374151',
-                            background: isSelected ? '#1e293b' : '#111827',
-                          }}
-                        >
-                          <div style={{ fontWeight: '600', fontSize: '15px' }}>{t.number}</div>
-                          <span style={{
-                            ...styles.statusBadge,
-                            background: isOccupied ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)',
-                            color: isOccupied ? '#f87171' : '#34d399',
-                          }}>
-                            {isOccupied ? 'Terisi' : 'Kosong'}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
+                <h3 style={styles.sectionTitle}>Status Meja</h3>
+                <div style={styles.tableGrid}>
+                  {tables.map(t => (
+                    <div
+                      key={t.id}
+                      onClick={() => setSelectedTable(t)}
+                      style={{
+                        ...styles.tableCard,
+                        borderColor: selectedTable?.id === t.id ? '#3b82f6' : t.status === 'occupied' ? '#ef4444' : '#374151',
+                        background: selectedTable?.id === t.id ? '#1e293b' : '#111827',
+                      }}
+                    >
+                      <strong>{t.number}</strong>
+                      <span style={{ ...styles.statusBadge, color: t.status === 'occupied' ? '#f87171' : '#34d399' }}>
+                        {t.status === 'occupied' ? 'Terisi' : 'Kosong'}
+                      </span>
+                    </div>
+                  ))}
                 </div>
 
                 {selectedTable && (
-                  <div>
-                    <h3 style={styles.sectionTitle}>Pilih Menu ({selectedTable.number})</h3>
+                  <div style={{ marginTop: '20px' }}>
+                    <h3 style={styles.sectionTitle}>Menu ({selectedTable.number})</h3>
                     {activeTableStatus === 'available' ? (
-                      <div style={styles.openTablePromptCard}>
-                        <p style={{ margin: '0 0 16px 0', color: '#9ca3af' }}>Meja ini masih dalam keadaan kosong.</p>
-                        <button style={styles.primaryBtn} onClick={handleOpenTable}>Open Table</button>
-                      </div>
+                      <button style={styles.primaryBtn} onClick={handleOpenTable}>Open Table</button>
                     ) : (
                       <div style={styles.menuGrid}>
                         {menuList.map(menu => (
-                          <div key={menu.id} style={styles.menuCard} onClick={() => handleOpenPosDineInOptionModal(menu)}>
+                          <div key={menu.id} style={styles.menuCard} onClick={() => handleOpenPosModal(menu, 'dine-in')}>
                             <div>
-                              <div style={{ fontWeight: '600', fontSize: '14px' }}>{menu.name}</div>
-                              <div style={{ fontSize: '11px', color: '#60a5fa', margin: '2px 0' }}>{menu.category}</div>
-                              <div style={{ fontSize: '13px', color: '#9ca3af' }}>Rp {Number(menu.price).toLocaleString()}</div>
+                              <div style={{ fontWeight: '600' }}>{menu.name}</div>
+                              <div style={{ fontSize: '11px', color: '#60a5fa' }}>{menu.category}</div>
+                              <div style={{ fontSize: '13px' }}>Rp {Number(menu.price).toLocaleString()}</div>
                             </div>
                             <button style={styles.addMenuBtn}>+</button>
                           </div>
@@ -1373,163 +604,79 @@ export default function App() {
                 )}
               </div>
 
+              {/* Dine-In Right Panel (Rekap Order) */}
               <div style={styles.rightPanel}>
                 {!selectedTable ? (
-                  <div style={styles.emptyStateContainer}>
-                    <p>Silakan pilih salah satu meja terlebih dahulu.</p>
-                  </div>
+                  <div style={styles.emptyStateContainer}><p>Pilih meja terlebih dahulu</p></div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-                    <div style={styles.panelHeader}>
-                      <div>
-                        <h2 style={{ margin: 0, fontSize: '18px' }}>{selectedTable.number}</h2>
-                        <span style={{ fontSize: '12px', color: activeTableStatus === 'occupied' ? '#34d399' : '#9ca3af' }}>
-                          Status: {activeTableStatus === 'occupied' ? 'Sesi Aktif' : 'Kosong'}
-                        </span>
+                    <h3>{selectedTable.number} - Rekap Order</h3>
+                    <div style={{ flex: 1, overflowY: 'auto' }}>
+                      {/* Draft Cart */}
+                      <div style={styles.sectionBlock}>
+                        <h4 style={styles.subTitle}>Draft Input Baru</h4>
+                        {cartItems.map((item, idx) => (
+                          <div key={idx} style={styles.cartRow}>
+                            <div style={{ flex: 1 }}>
+                              <div>{item.qty}x <strong>{item.name}</strong></div>
+                              {item.options && Object.keys(item.options).length > 0 && (
+                                <div style={{ fontSize: '11px', color: '#60a5fa' }}>{Object.values(item.options).join(' • ')}</div>
+                              )}
+                              {item.notes && <div style={{ fontSize: '11px', color: '#f59e0b' }}>Note: {item.notes}</div>}
+                            </div>
+                            <div>Rp {(item.price * item.qty).toLocaleString()}</div>
+                          </div>
+                        ))}
+                        {cartItems.length > 0 && (
+                          <button style={styles.confirmOrderBtn} onClick={handleConfirmOrder}>Kirim ke Printer Dapur</button>
+                        )}
                       </div>
-                      {activeTableStatus === 'occupied' && batches.length === 0 && cartItems.length === 0 && (
-                        <button style={styles.dangerOutlineBtn} onClick={handleCancelOpenTable}>Cancel Open Table</button>
-                      )}
+
+                      {/* Riwayat Order Dapur */}
+                      <div style={styles.sectionBlock}>
+                        <h4 style={styles.subTitle}>Sudah Dikirim ke Dapur</h4>
+                        {batches.map((b, i) => (
+                          <div key={b.batchId} style={styles.batchCard}>
+                            <div style={styles.batchHeader}>Batch #{i + 1} - Jam {b.time}</div>
+                            {b.items.map((it, idx) => (
+                              <div key={idx} style={{ marginTop: '4px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                                  <span>{it.qty}x {it.name}</span>
+                                  <span>Rp {(it.price * it.qty).toLocaleString()}</span>
+                                </div>
+                                {it.options && Object.keys(it.options).length > 0 && (
+                                  <div style={{ fontSize: '11px', color: '#60a5fa' }}>{Object.values(it.options).join(' • ')}</div>
+                                )}
+                                {it.notes && <div style={{ fontSize: '11px', color: '#f59e0b' }}>Note: {it.notes}</div>}
+                              </div>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
                     </div>
 
-                    {activeTableStatus === 'occupied' && (
-                      <div style={{ flex: 1, overflowY: 'auto', paddingRight: '4px' }}>
-                        <div style={styles.sectionBlock}>
-                          <h4 style={styles.subTitle}>Draft Pesanan Baru (Kasir)</h4>
-                          {cartItems.length === 0 ? (
-                            <p style={styles.mutedText}>Belum ada menu dipilih</p>
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                              {cartItems.map(item => (
-                                <div key={item.id} style={styles.cartRow}>
-                                  <div style={{ flex: 1 }}>
-                                    <div style={{ fontWeight: '500', fontSize: '14px' }}>{item.name}</div>
-                                    {item.options && (
-                                      <div style={{ fontSize: '11px', color: '#60a5fa' }}>
-                                        {item.options.ice} • {item.options.sugar}
-                                      </div>
-                                    )}
-                                    <small style={{ color: '#9ca3af' }}>
-                                      Rp {Number(item.price).toLocaleString()} x {item.qty}
-                                    </small>
-                                  </div>
-                                  <div style={{ fontWeight: '600', marginRight: '12px', fontSize: '14px' }}>
-                                    Rp {(item.price * item.qty).toLocaleString()}
-                                  </div>
-                                  <button style={styles.deleteBtn} onClick={() => handleRemoveFromCart(item.id)}>✕</button>
-                                </div>
-                              ))}
-                              <button style={styles.confirmOrderBtn} onClick={handleConfirmOrder}>
-                                Confirm Order (Label Dapur)
-                              </button>
-                            </div>
-                          )}
-                        </div>
-
-                        <div style={styles.sectionBlock}>
-                          <h4 style={styles.subTitle}>Riwayat Order Dapur (Kasir & Self Order)</h4>
-                          {batches.length === 0 ? (
-                            <p style={styles.mutedText}>Belum ada orderan dikirim ke dapur</p>
-                          ) : (
-                            batches.map((b, i) => (
-                              <div key={b.batchId} style={styles.batchCard}>
-                                <div style={styles.batchHeader}>
-                                  <span>Batch #{i + 1} - Jam {b.time}</span>
-                                  <span style={styles.badgeSent}>Terkirim Dapur</span>
-                                </div>
-                                {b.items.map((it, idx) => (
-                                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginTop: '4px' }}>
-                                    <span>{it.qty}x {it.name}</span>
-                                    <span style={{ color: '#9ca3af' }}>Rp {(it.price * it.qty).toLocaleString()}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            ))
-                          )}
-                        </div>
+                    <div style={styles.paymentFooter}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '18px', fontWeight: 'bold' }}>
+                        <span>Total:</span>
+                        <span style={{ color: '#10b981' }}>Rp {finalTotal.toLocaleString()}</span>
                       </div>
-                    )}
-
-                    {activeTableStatus === 'occupied' && (
-                      <div style={styles.paymentFooter}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                          <span style={{ color: '#9ca3af', fontSize: '13px' }}>Subtotal:</span>
-                          <span>Rp {subTotal.toLocaleString()}</span>
-                        </div>
-                        {autoDiscount > 0 && (
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', color: '#ef4444', fontSize: '13px' }}>
-                            <span>Promo Diskon (Otomatis):</span>
-                            <span>- Rp {autoDiscount.toLocaleString()}</span>
-                          </div>
-                        )}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
-                          <span style={{ color: '#9ca3af' }}>Total Akhir:</span>
-                          <span style={{ fontSize: '18px', fontWeight: '700', color: '#10b981' }}>
-                            Rp {finalTotal.toLocaleString()}
-                          </span>
-                        </div>
-                        <button 
-                          style={{ ...styles.primaryBtn, width: '100%', padding: '12px', fontSize: '14px' }}
-                          onClick={handleCloseTableClick}
-                        >
-                          Close Table & Payment
-                        </button>
-                      </div>
-                    )}
+                      <button style={{ ...styles.primaryBtn, width: '100%', marginTop: '10px' }} onClick={handlePaymentSuccess}>Close Table & Payment</button>
+                    </div>
                   </div>
                 )}
               </div>
             </>
           ) : (
-            /* ================= TAKEAWAY MODE ================= */
+            /* Takeaway Mode */
             <>
               <div style={styles.leftPanel}>
-                <h3 style={styles.sectionTitle}>Pesan Takeaway / Online Order</h3>
-                
-                <div style={{ display: 'flex', gap: '8px', margin: '12px 0' }}>
-                  {['On Site', 'GoFood', 'GrabFood', 'ShopeeFood'].map(plat => (
-                    <button
-                      key={plat}
-                      onClick={() => setTakeawayPlatform(plat)}
-                      style={{
-                        ...styles.roleBtn,
-                        background: takeawayPlatform === plat ? '#3b82f6' : '#1e293b',
-                        color: takeawayPlatform === plat ? '#fff' : '#94a3b8',
-                        fontWeight: '600'
-                      }}
-                    >
-                      {plat}
-                    </button>
-                  ))}
-                </div>
-
-                <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
-                  {takeawayPlatform === 'On Site' ? (
-                    <input 
-                      type="text" 
-                      placeholder="Nama Pelanggan (opsional)" 
-                      value={takeawayCustomerName} 
-                      onChange={(e) => setTakeawayCustomerName(e.target.value)}
-                      style={styles.inputField}
-                    />
-                  ) : (
-                    <input 
-                      type="text" 
-                      placeholder={`Nomor Orderan ${takeawayPlatform} (Wajib)`} 
-                      value={takeawayOrderNoInput} 
-                      onChange={(e) => setTakeawayOrderNoInput(e.target.value)}
-                      style={styles.inputField}
-                    />
-                  )}
-                </div>
-
+                <h3>Takeaway / Online Order</h3>
                 <div style={styles.menuGrid}>
                   {menuList.map(menu => (
-                    <div key={menu.id} style={styles.menuCard} onClick={() => handleOpenPosOptionModal(menu, 'takeaway')}>
+                    <div key={menu.id} style={styles.menuCard} onClick={() => handleOpenPosModal(menu, 'takeaway')}>
                       <div>
-                        <div style={{ fontWeight: '600', fontSize: '14px' }}>{menu.name}</div>
-                        <div style={{ fontSize: '11px', color: '#60a5fa', margin: '2px 0' }}>{menu.category}</div>
-                        <div style={{ fontSize: '13px', color: '#9ca3af' }}>Rp {Number(menu.price).toLocaleString()}</div>
+                        <div>{menu.name}</div>
+                        <div style={{ fontSize: '12px', color: '#34d399' }}>Rp {Number(menu.price).toLocaleString()}</div>
                       </div>
                       <button style={styles.addMenuBtn}>+</button>
                     </div>
@@ -1537,338 +684,71 @@ export default function App() {
                 </div>
               </div>
 
-              <div style={{ flex: 1.2, padding: '20px', borderRight: '1px solid #334155', display: 'flex', flexDirection: 'column' }}>
-                <h3 style={styles.sectionTitle}>Draft Cart Takeaway ({takeawayPlatform})</h3>
-                <div style={{ flex: 1, overflowY: 'auto', marginTop: '12px' }}>
-                  {takeawayCart.length === 0 ? (
-                    <p style={styles.mutedText}>Pilih menu untuk takeaway</p>
-                  ) : (
-                    takeawayCart.map(item => (
-                      <div key={item.id} style={{ ...styles.cartRow, marginBottom: '8px' }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: '500', fontSize: '14px' }}>{item.name}</div>
-                          {item.options && (
-                            <div style={{ fontSize: '11px', color: '#60a5fa' }}>
-                              {item.options.ice} • {item.options.sugar}
-                            </div>
-                          )}
-                          <small style={{ color: '#9ca3af' }}>
-                            Rp {Number(item.price).toLocaleString()} x {item.qty}
-                          </small>
-                        </div>
-                        <div style={{ fontWeight: '600', marginRight: '12px' }}>Rp {(item.price * item.qty).toLocaleString()}</div>
-                        <button style={styles.deleteBtn} onClick={() => handleRemoveFromTakeawayCart(item.id)}>✕</button>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                <button 
-                  style={{ ...styles.confirmOrderBtn, padding: '12px', marginTop: '12px' }} 
-                  onClick={handleConfirmTakeawayOrder}
-                  disabled={takeawayCart.length === 0}
-                >
-                  Confirm Order & Cetak Label Dapur
-                </button>
-              </div>
-
               <div style={styles.rightPanel}>
-                <h3 style={styles.sectionTitle}>Daftar Antrean Active Takeaway ({takeawayOrders.length})</h3>
-                <div style={{ flex: 1, overflowY: 'auto', marginTop: '12px' }}>
-                  {takeawayOrders.length === 0 ? (
-                    <p style={styles.mutedText}>Belum ada antrean takeaway aktif</p>
-                  ) : (
-                    takeawayOrders.map(order => (
-                      <div key={order.id} style={{ ...styles.ownerCard, marginBottom: '12px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <strong style={{ fontSize: '16px', color: '#38bdf8' }}>{order.orderNo} ({order.platform})</strong>
-                          <span style={{ fontSize: '11px', color: '#9ca3af' }}>{order.time}</span>
-                        </div>
-                        <div style={{ fontSize: '12px', color: '#94a3b8', margin: '4px 0' }}>Pelanggan: {order.customerName}</div>
-                        
-                        <div style={{ margin: '8px 0', fontSize: '13px' }}>
-                          {order.items.map((it, idx) => (
-                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <span>{it.qty}x {it.name}</span>
-                              <span>Rp {(it.price * it.qty).toLocaleString()}</span>
-                            </div>
-                          ))}
-                        </div>
-
-                        <div style={{ borderTop: '1px solid #334155', paddingTop: '6px', fontSize: '13px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', color: '#9ca3af', marginBottom: '2px' }}>
-                            <span>Subtotal:</span>
-                            <span>Rp {order.subTotal.toLocaleString()}</span>
-                          </div>
-                          
-                          {order.discount > 0 && (
-                            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#ef4444', marginBottom: '4px' }}>
-                              <span>Promo Diskon (Otomatis):</span>
-                              <span>- Rp {order.discount.toLocaleString()}</span>
-                            </div>
-                          )}
-
-                          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '14px', marginTop: '4px' }}>
-                            <span>Total:</span>
-                            <span style={{ color: '#10b981' }}>Rp {order.total.toLocaleString()}</span>
-                          </div>
-                        </div>
-
-                        <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
-                          {!order.isPaid ? (
-                            <button 
-                              style={{ ...styles.primaryBtn, flex: 1, padding: '6px', fontSize: '12px' }}
-                              onClick={() => { setSelectedTakeawayOrder(order); setShowTakeawayPaymentModal(true); }}
-                            >
-                              Confirm Payment
-                            </button>
-                          ) : (
-                            <span style={{ fontSize: '12px', color: '#34d399', display: 'flex', alignItems: 'center', fontWeight: '600' }}>
-                              ✓ Sudah Lunas
-                            </span>
-                          )}
-
-                          <button 
-                            style={{ ...styles.dangerOutlineBtn, flex: 1, borderColor: '#10b981', color: '#10b981' }}
-                            onClick={() => handleCompleteTakeaway(order.id)}
-                          >
-                            Selesaikan Order
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
+                <h3>Antrean Takeaway</h3>
+                {takeawayCart.length > 0 && (
+                  <button style={styles.confirmOrderBtn} onClick={handleConfirmTakeawayOrder}>Simpan & Cetak Label Dapur</button>
+                )}
               </div>
             </>
           )}
-
         </div>
       )}
 
-      {/* Modal PIN / Password */}
+      {/* Modal Opsi & Notes Kasir POS */}
+      {showPosOptionModal && posSelectedItem && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalCard}>
+            <h3>Opsi: {posSelectedItem.name}</h3>
+            {posAvailableOptions.map(opt => (
+              <div key={opt.id} style={{ marginBottom: '12px' }}>
+                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>{opt.title}:</label>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {(opt.values || []).map(val => (
+                    <button
+                      key={val}
+                      onClick={() => setPosSelectedOptions({ ...posSelectedOptions, [opt.title]: val })}
+                      style={{
+                        padding: '6px 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', border: '1px solid #334155',
+                        backgroundColor: posSelectedOptions[opt.title] === val ? '#2563eb' : '#0f172a',
+                        color: posSelectedOptions[opt.title] === val ? '#fff' : '#94a3b8'
+                      }}
+                    >
+                      {val}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Notes Opsional:</label>
+              <input
+                type="text"
+                placeholder="Catatan pesanan..."
+                value={posNotes}
+                onChange={e => setPosNotes(e.target.value)}
+                style={{ ...styles.inputField, width: '100%' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button style={styles.dangerOutlineBtn} onClick={() => setShowPosOptionModal(false)}>Batal</button>
+              <button style={styles.primaryBtn} onClick={handleConfirmPosItem}>Tambahkan</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Auth PIN */}
       {showAuthModal && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalCard}>
-            <h3 style={{ margin: '0 0 12px 0' }}>Masukkan Password Mode {targetRole === 'owner' ? 'Owner' : 'Kasir'}</h3>
+            <h3>Masukkan PIN Mode {targetRole === 'owner' ? 'Owner' : 'Kasir'}</h3>
             <form onSubmit={handleVerifyPin}>
-              <input 
-                type="password" 
-                placeholder="Masukkan PIN / Password" 
-                value={pinInput} 
-                onChange={(e) => setPinInput(e.target.value)}
-                style={{ ...styles.inputField, marginBottom: '16px' }}
-                autoFocus
-              />
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button type="button" style={{ ...styles.dangerOutlineBtn, flex: 1 }} onClick={() => setShowAuthModal(false)}>Batal</button>
-                <button type="submit" style={{ ...styles.primaryBtn, flex: 1 }}>Masuk</button>
-              </div>
+              <input type="password" value={pinInput} onChange={e => setPinInput(e.target.value)} style={{ ...styles.inputField, width: '100%', marginBottom: '12px' }} autoFocus />
+              <button type="submit" style={{ ...styles.primaryBtn, width: '100%' }}>Masuk</button>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Pembayaran Dine-In */}
-      {showCheckoutModal && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modalCard}>
-            <h3 style={{ margin: '0 0 16px 0', fontSize: '18px' }}>Rincian Pembayaran ({selectedTable.number})</h3>
-            
-            <div style={{ maxHeight: '160px', overflowY: 'auto', marginBottom: '16px' }}>
-              {recapList.map((item, idx) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #374151', fontSize: '14px' }}>
-                  <span>{item.qty}x {item.name}</span>
-                  <span>Rp {(item.price * item.qty).toLocaleString()}</span>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ fontSize: '13px', color: '#9ca3af', display: 'flex', justifyContent: 'space-between' }}>
-              <span>Subtotal:</span>
-              <span>Rp {subTotal.toLocaleString()}</span>
-            </div>
-            {autoDiscount > 0 && (
-              <div style={{ fontSize: '13px', color: '#ef4444', display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
-                <span>Promo Diskon Otomatis:</span>
-                <span>- Rp {autoDiscount.toLocaleString()}</span>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '18px', fontWeight: '700', margin: '12px 0', color: '#10b981' }}>
-              <span>Total Akhir:</span>
-              <span>Rp {finalTotal.toLocaleString()}</span>
-            </div>
-
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button style={{ ...styles.dangerOutlineBtn, flex: 1 }} onClick={() => setShowCheckoutModal(false)}>
-                Batal
-              </button>
-              <button style={{ ...styles.primaryBtn, flex: 2, background: '#10b981' }} onClick={() => handlePaymentSuccess(false)}>
-                Payment Success & Print Struk
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-            {/* Modal Pembayaran Takeaway */}
-            {showTakeawayPaymentModal && selectedTakeawayOrder && (
-              <div style={styles.modalOverlay}>
-                <div style={styles.modalCard}>
-                  <h3 style={{ margin: '0 0 12px 0' }}>Pembayaran Takeaway {selectedTakeawayOrder.orderNo}</h3>
-                  <p style={{ fontSize: '13px', color: '#9ca3af', margin: '0 0 12px 0' }}>Platform: {selectedTakeawayOrder.platform}</p>
-      
-                  <div style={{ borderTop: '1px solid #334155', borderBottom: '1px solid #334155', padding: '8px 0', marginBottom: '12px' }}>
-                    {selectedTakeawayOrder.items.map((it, idx) => (
-                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
-                        <span>{it.qty}x {it.name}</span>
-                        <span>Rp {(it.price * it.qty).toLocaleString()}</span>
-                      </div>
-                    ))}
-                  </div>
-      
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#9ca3af', marginBottom: '4px' }}>
-                    <span>Subtotal:</span>
-                    <span>Rp {selectedTakeawayOrder.subTotal.toLocaleString()}</span>
-                  </div>
-      
-                  {selectedTakeawayOrder.discount > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#ef4444', marginBottom: '8px' }}>
-                      <span>Promo Diskon (Otomatis):</span>
-                      <span>- Rp {selectedTakeawayOrder.discount.toLocaleString()}</span>
-                    </div>
-                  )}
-      
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '16px', fontWeight: 'bold', color: '#10b981', marginBottom: '16px' }}>
-                    <span>Total Tagihan:</span>
-                    <span>Rp {selectedTakeawayOrder.total.toLocaleString()}</span>
-                  </div>
-      
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button style={{ ...styles.dangerOutlineBtn, flex: 1 }} onClick={() => setShowTakeawayPaymentModal(false)}>Batal</button>
-                    <button style={{ ...styles.primaryBtn, flex: 2, background: '#10b981' }} onClick={() => handlePayTakeaway(selectedTakeawayOrder)}>Konfirmasi Lunas & Print Struk</button>
-                  </div>
-                </div>
-              </div>
-            )}
-      {/* Modal Opsi Minuman untuk POS Kasir */}
-      {optionModalItem && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modalCard}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '16px' }}>Pilih Opsi: {optionModalItem.name}</h3>
-      
-            <div style={{ marginBottom: '12px' }}>
-              <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Ice Level:</label>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                {['Normal Ice', 'Less Ice', 'No Ice'].map(ice => (
-                  <button
-                    key={ice}
-                    type="button"
-                    onClick={() => setPosIceOption(ice)}
-                    style={{
-                      ...styles.roleBtn,
-                      background: posIceOption === ice ? '#3b82f6' : '#0f172a',
-                      color: posIceOption === ice ? '#fff' : '#94a3b8',
-                      border: '1px solid #334155'
-                    }}
-                  >
-                    {ice}
-                  </button>
-                ))}
-              </div>
-            </div>
-      
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Sugar Level:</label>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                {['Normal Sugar', 'Less Sugar', 'Extra Sugar'].map(sugar => (
-                  <button
-                    key={sugar}
-                    type="button"
-                    onClick={() => setPosSugarOption(sugar)}
-                    style={{
-                      ...styles.roleBtn,
-                      background: posSugarOption === sugar ? '#3b82f6' : '#0f172a',
-                      color: posSugarOption === sugar ? '#fff' : '#94a3b8',
-                      border: '1px solid #334155'
-                    }}
-                  >
-                    {sugar}
-                  </button>
-                ))}
-              </div>
-            </div>
-      
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button style={{ ...styles.dangerOutlineBtn, flex: 1 }} onClick={() => setOptionModalItem(null)}>
-                Batal
-              </button>
-              <button style={{ ...styles.primaryBtn, flex: 2 }} onClick={handleConfirmPosAddToCart}>
-                Tambahkan
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ==================== TAMBAHKAN KODE INI TEPAT DI BAWAHNYA ==================== */}
-      {/* Modal Opsi Dine-In Kasir */}
-      {showPosDineInOptionModal && posDineInSelectedItem && (
-        <div style={styles.modalOverlay}>
-          <div style={styles.modalCard}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '16px' }}>Pilih Opsi: {posDineInSelectedItem.name}</h3>
-
-            <div style={{ marginBottom: '12px' }}>
-              <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Ice Level:</label>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                {['Normal Ice', 'Less Ice', 'No Ice'].map(ice => (
-                  <button
-                    key={ice}
-                    type="button"
-                    onClick={() => setPosDineInIce(ice)}
-                    style={{
-                      ...styles.roleBtn,
-                      background: posDineInIce === ice ? '#3b82f6' : '#0f172a',
-                      color: posDineInIce === ice ? '#fff' : '#94a3b8',
-                      border: '1px solid #334155'
-                    }}
-                  >
-                    {ice}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Sugar Level:</label>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                {['Normal Sugar', 'Less Sugar', 'Extra Sugar'].map(sugar => (
-                  <button
-                    key={sugar}
-                    type="button"
-                    onClick={() => setPosDineInSugar(sugar)}
-                    style={{
-                      ...styles.roleBtn,
-                      background: posDineInSugar === sugar ? '#3b82f6' : '#0f172a',
-                      color: posDineInSugar === sugar ? '#fff' : '#94a3b8',
-                      border: '1px solid #334155'
-                    }}
-                  >
-                    {sugar}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button style={{ ...styles.dangerOutlineBtn, flex: 1 }} onClick={() => setShowPosDineInOptionModal(false)}>
-                Batal
-              </button>
-              <button style={{ ...styles.primaryBtn, flex: 2 }} onClick={handleConfirmPosDineInAddToCart}>
-                Tambahkan
-              </button>
-            </div>
           </div>
         </div>
       )}
@@ -1876,102 +756,38 @@ export default function App() {
   );
 }
 
-// Fullscreen Dark SaaS Stylesheet
 const styles = {
-  appContainer: {
-    height: '100vh',
-    width: '100vw',
-    boxSizing: 'border-box',
-    backgroundColor: '#0f172a',
-    color: '#f8fafc',
-    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden',
-    position: 'fixed',
-    top: 0,
-    left: 0,
-  },
-  header: {
-    height: '56px',
-    backgroundColor: '#1e293b',
-    borderBottom: '1px solid #334155',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '0 20px',
-    boxSizing: 'border-box',
-    width: '100%',
-  },
-  logoBadge: {
-    width: '32px',
-    height: '32px',
-    backgroundColor: '#3b82f6',
-    borderRadius: '8px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontWeight: '700',
-    fontSize: '14px',
-  },
-  headerTitle: { fontSize: '18px', fontWeight: '600', margin: 0 },
-  roleBtn: { background: 'transparent', border: 'none', color: '#94a3b8', padding: '6px 12px', cursor: 'pointer', borderRadius: '6px', fontSize: '13px' },
-  activeRoleBtn: { background: '#334155', border: 'none', color: '#fff', padding: '6px 12px', cursor: 'pointer', borderRadius: '6px', fontWeight: '600', fontSize: '13px' },
-  modeNavBtn: { background: 'transparent', border: 'none', color: '#94a3b8', padding: '6px 10px', cursor: 'pointer', borderRadius: '6px', fontSize: '12px' },
-  activeModeNavBtn: { background: '#2563eb', border: 'none', color: '#fff', padding: '6px 10px', cursor: 'pointer', borderRadius: '6px', fontSize: '12px', fontWeight: '600' },
-
-  mainLayout: { flex: 1, display: 'flex', overflow: 'hidden', width: '100%', boxSizing: 'border-box' },
-  leftPanel: { flex: 2, padding: '20px', overflowY: 'auto', borderRight: '1px solid #334155', boxSizing: 'border-box' },
-  rightPanel: { flex: 1.1, padding: '20px', backgroundColor: '#1e293b', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' },
-  
-  sectionTitle: { fontSize: '15px', fontWeight: '600', margin: 0, color: '#e2e8f0' },
+  appContainer: { height: '100vh', width: '100vw', backgroundColor: '#0f172a', color: '#f8fafc', fontFamily: 'sans-serif', display: 'flex', flexDirection: 'column' },
+  header: { height: '56px', backgroundColor: '#1e293b', borderBottom: '1px solid #334155', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px' },
+  logoBadge: { width: '32px', height: '32px', backgroundColor: '#3b82f6', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' },
+  headerTitle: { fontSize: '18px', margin: 0 },
+  roleBtn: { background: 'transparent', border: 'none', color: '#94a3b8', padding: '6px 12px', cursor: 'pointer' },
+  activeRoleBtn: { background: '#334155', border: 'none', color: '#fff', padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' },
+  modeNavBtn: { background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' },
+  activeModeNavBtn: { background: '#2563eb', border: 'none', color: '#fff', padding: '6px 10px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' },
+  mainLayout: { flex: 1, display: 'flex', overflow: 'hidden' },
+  leftPanel: { flex: 2, padding: '20px', overflowY: 'auto', borderRight: '1px solid #334155' },
+  rightPanel: { flex: 1.1, padding: '20px', backgroundColor: '#1e293b', display: 'flex', flexDirection: 'column' },
+  sectionTitle: { fontSize: '15px', margin: 0 },
   tableGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '10px', marginTop: '12px' },
-  tableCard: {
-    padding: '12px 8px',
-    borderRadius: '10px',
-    border: '2px solid',
-    cursor: 'pointer',
-    textAlign: 'center',
-    transition: 'all 0.2s ease',
-  },
-  statusBadge: { fontSize: '11px', padding: '2px 6px', borderRadius: '12px', marginTop: '6px', display: 'inline-block', fontWeight: '500' },
-  
-  openTablePromptCard: { padding: '24px', border: '1px dashed #475569', borderRadius: '12px', textAlign: 'center', marginTop: '12px' },
+  tableCard: { padding: '12px', borderRadius: '10px', border: '2px solid', cursor: 'pointer', textAlign: 'center' },
+  statusBadge: { fontSize: '11px', display: 'block', marginTop: '4px' },
   menuGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '10px', marginTop: '12px' },
-  menuCard: {
-    backgroundColor: '#111827',
-    border: '1px solid #374151',
-    borderRadius: '10px',
-    padding: '12px',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    cursor: 'pointer',
-  },
+  menuCard: { backgroundColor: '#111827', border: '1px solid #374151', borderRadius: '10px', padding: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' },
   addMenuBtn: { width: '26px', height: '26px', borderRadius: '50%', border: 'none', background: '#3b82f6', color: '#fff', fontWeight: 'bold', cursor: 'pointer' },
-  
-  panelHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '12px', borderBottom: '1px solid #334155', marginBottom: '12px' },
   emptyStateContainer: { display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center', color: '#64748b' },
-  
   sectionBlock: { marginBottom: '16px' },
-  subTitle: { fontSize: '12px', textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.5px', marginBottom: '8px' },
-  mutedText: { fontSize: '13px', color: '#64748b', margin: 0 },
-  
-  cartRow: { display: 'flex', alignItems: 'center', background: '#0f172a', padding: '8px 10px', borderRadius: '8px', border: '1px solid #334155' },
-  deleteBtn: { background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px', padding: '4px 8px' },
-  confirmOrderBtn: { width: '100%', padding: '10px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', marginTop: '8px', fontSize: '13px' },
-  
+  subTitle: { fontSize: '12px', textTransform: 'uppercase', color: '#94a3b8' },
+  cartRow: { display: 'flex', alignItems: 'center', background: '#0f172a', padding: '8px 10px', borderRadius: '8px', border: '1px solid #334155', marginBottom: '6px' },
+  deleteBtn: { background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' },
+  confirmOrderBtn: { width: '100%', padding: '10px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', marginTop: '8px' },
   batchCard: { background: '#0f172a', padding: '10px', borderRadius: '8px', borderLeft: '3px solid #3b82f6', marginBottom: '8px' },
-  batchHeader: { display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8', marginBottom: '4px' },
-  badgeSent: { color: '#3b82f6', background: 'rgba(59, 130, 246, 0.1)', padding: '2px 6px', borderRadius: '4px' },
-  
+  batchHeader: { fontSize: '11px', color: '#94a3b8' },
   paymentFooter: { marginTop: 'auto', paddingTop: '12px', borderTop: '1px solid #334155' },
-  primaryBtn: { background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 14px', fontWeight: '600', cursor: 'pointer', fontSize: '13px' },
-  dangerOutlineBtn: { background: 'transparent', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '8px', padding: '6px 12px', fontSize: '12px', cursor: 'pointer' },
-  
+  primaryBtn: { background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 14px', fontWeight: 'bold', cursor: 'pointer' },
+  dangerOutlineBtn: { background: 'transparent', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer' },
   inputField: { padding: '8px 12px', borderRadius: '6px', border: '1px solid #374151', backgroundColor: '#0f172a', color: '#fff', boxSizing: 'border-box' },
   ownerCard: { backgroundColor: '#1e293b', padding: '16px', borderRadius: '10px', border: '1px solid #334155', marginBottom: '16px' },
-
   modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 },
-  modalCard: { backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '12px', padding: '20px', width: '380px', boxSizing: 'border-box' },
+  modalCard: { backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '12px', padding: '20px', width: '380px', boxSizing: 'border-box' }
 };
