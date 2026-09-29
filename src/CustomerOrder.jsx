@@ -71,6 +71,29 @@ export default function CustomerOrder({ tableId }) {
     setSelectedOptions(init);
   };
 
+  // 1. Fungsi BARU untuk mengecek apakah menu punya opsi atau tidak saat tombol (+ Tambah) diklik
+const handleAddToCart = (menu) => {
+  const catObj = categories.find((c) => c.name.toLowerCase() === menu.category.toLowerCase());
+  const hasOptions = catObj?.allowed_options && catObj.allowed_options.length > 0;
+
+  if (hasOptions) {
+    // Jika punya opsi (misal: Ice/Sugar Level), BUKA MODAL OPSINYA
+    handleOpenOptionModal(menu);
+  } else {
+    // Jika TIDAK punya opsi, LANGSUNG MASUK KERANJANG tanpa modal
+    const cartKey = `${menu.id}-{}-`;
+    setCart((prevCart) => {
+      const existingIndex = prevCart.findIndex((item) => item.cartKey === cartKey);
+      if (existingIndex > -1) {
+        return prevCart.map((item, idx) =>
+          idx === existingIndex ? { ...item, qty: item.qty + 1 } : item
+        );
+      }
+      return [...prevCart, { ...menu, qty: 1, options: {}, notes: '', cartKey }];
+    });
+  }
+};
+  
   const handleConfirmAddToCart = () => {
     if (!selectedMenuForOption) return;
 
