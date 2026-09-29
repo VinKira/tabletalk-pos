@@ -270,6 +270,7 @@ export default function App() {
     }
     setActiveSessions(sessionsMap);
 
+    // 1. DINE-IN ORDERS QUERY (DIPERBAIKI)
     const { data: dineInOrders } = await supabase
       .from('orders')
       .select(`
@@ -280,7 +281,16 @@ export default function App() {
         order_batches (
           id,
           created_at,
-          order_items ( idorder_items ( id, menu_id, menu_name, price, qty, category, ice_level, sugar_level ), menu_id, menu_name, price, qty, category )
+          order_items (
+            id,
+            menu_id,
+            menu_name,
+            price,
+            qty,
+            category,
+            ice_level,
+            sugar_level
+          )
         )
       `)
       .eq('order_type', 'dine-in')
@@ -308,11 +318,21 @@ export default function App() {
     }
     setConfirmedOrders(confirmedMap);
 
+    // 2. TAKEAWAY ORDERS QUERY (DIPERBAIKI)
     const { data: takeaways } = await supabase
       .from('orders')
       .select(`
         *,
-        order_items ( id,order_items ( id, menu_id, menu_name, price, qty, category, ice_level, sugar_level ) menu_id, menu_name, price, qty, category )
+        order_items (
+          id,
+          menu_id,
+          menu_name,
+          price,
+          qty,
+          category,
+          ice_level,
+          sugar_level
+        )
       `)
       .eq('order_type', 'takeaway')
       .eq('status', 'active')
@@ -331,9 +351,6 @@ export default function App() {
         
         const subTotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
         
-        // HITUNG RE-CALCULATE DISKON REALTIME:
-        // Jika order BELUM lunas, selalu hitung ulang diskon mengikuti aturan promo aktif saat ini.
-        // Jika order SUDAH lunas, gunakan nilai diskon histori yang ada di DB.
         const calculatedDiscount = calculateAutoDiscount(items, currentRules);
         const discount = t.is_paid ? (Number(t.discount) || 0) : calculatedDiscount;
         const total = Math.max(0, subTotal - discount);
