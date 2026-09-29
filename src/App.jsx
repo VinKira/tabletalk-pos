@@ -67,63 +67,6 @@ export default function App() {
   const [confirmedOrders, setConfirmedOrders] = useState({}); // { [tableId]: [batches] }
   const [takeawayOrders, setTakeawayOrders] = useState([]); // [array of takeaway orders]
 
-  // State Options Modal untuk POS Kasir
-  const [optionModalItem, setOptionModalItem] = useState(null);
-  const [optionTargetMode, setOptionTargetMode] = useState(null); // 'dine-in' | 'takeaway'
-  const [posIceOption, setPosIceOption] = useState('Normal Ice');
-  const [posSugarOption, setPosSugarOption] = useState('Normal Sugar');
-
-  // Buka Modal saat menu diklik di POS Kasir
-  const handleOpenPosOptionModal = (menuItem, mode) => {
-    setOptionModalItem(menuItem);
-    setOptionTargetMode(mode);
-    setPosIceOption('Normal Ice');
-    setPosSugarOption('Normal Sugar');
-  };
-
-  // Konfirmasi Tambah ke Cart Dine-In / Takeaway
-  const handleConfirmPosAddToCart = () => {
-    if (!optionModalItem) return;
-
-    const itemWithOptions = {
-      ...optionModalItem,
-      options: { ice: posIceOption, sugar: posSugarOption }
-    };
-
-    if (optionTargetMode === 'dine-in') {
-      if (!selectedTable || selectedTable.status !== 'occupied') return;
-      const tableId = selectedTable.id;
-      const cart = currentCart[tableId] || [];
-      
-      const existingIndex = cart.findIndex(
-        item => item.id === itemWithOptions.id && 
-                item.options?.ice === posIceOption && 
-                item.options?.sugar === posSugarOption
-      );
-
-      if (existingIndex > -1) {
-        const updated = cart.map((item, idx) => idx === existingIndex ? { ...item, qty: item.qty + 1 } : item);
-        setCurrentCart(prev => ({ ...prev, [tableId]: updated }));
-      } else {
-        setCurrentCart(prev => ({ ...prev, [tableId]: [...cart, { ...itemWithOptions, qty: 1 }] }));
-      }
-    } else if (optionTargetMode === 'takeaway') {
-      const existingIndex = takeawayCart.findIndex(
-        item => item.id === itemWithOptions.id && 
-                item.options?.ice === posIceOption && 
-                item.options?.sugar === posSugarOption
-      );
-
-      if (existingIndex > -1) {
-        setTakeawayCart(takeawayCart.map((item, idx) => idx === existingIndex ? { ...item, qty: item.qty + 1 } : item));
-      } else {
-        setTakeawayCart([...takeawayCart, { ...itemWithOptions, qty: 1 }]);
-      }
-    }
-
-    setOptionModalItem(null); // Tutup modal
-  };
-  
   // Handler Download QR Code Meja
   const handleDownloadQR = (tableNumber) => {
     const svgElement = document.getElementById(`qr-svg-${tableNumber}`);
@@ -1311,7 +1254,7 @@ export default function App() {
                     ) : (
                       <div style={styles.menuGrid}>
                         {menuList.map(menu => (
-                          <div key={menu.id} style={styles.menuCard} onClick={() => handleOpenPosOptionModal(menu, 'dine-in')}>
+                          <div key={menu.id} style={styles.menuCard} onClick={() => handleAddToCart(menu)}>
                             <div>
                               <div style={{ fontWeight: '600', fontSize: '14px' }}>{menu.name}</div>
                               <div style={{ fontSize: '11px', color: '#60a5fa', margin: '2px 0' }}>{menu.category}</div>
@@ -1357,14 +1300,7 @@ export default function App() {
                                 <div key={item.id} style={styles.cartRow}>
                                   <div style={{ flex: 1 }}>
                                     <div style={{ fontWeight: '500', fontSize: '14px' }}>{item.name}</div>
-                                    {item.options && (
-                                      <div style={{ fontSize: '11px', color: '#60a5fa' }}>
-                                        {item.options.ice} • {item.options.sugar}
-                                      </div>
-                                    )}
-                                    <small style={{ color: '#9ca3af' }}>
-                                      Rp {Number(item.price).toLocaleString()} x {item.qty}
-                                    </small>
+                                    <small style={{ color: '#9ca3af' }}>Rp {Number(item.price).toLocaleString()} x {item.qty}</small>
                                   </div>
                                   <div style={{ fontWeight: '600', marginRight: '12px', fontSize: '14px' }}>
                                     Rp {(item.price * item.qty).toLocaleString()}
@@ -1478,7 +1414,7 @@ export default function App() {
 
                 <div style={styles.menuGrid}>
                   {menuList.map(menu => (
-                    <div key={menu.id} style={styles.menuCard} onClick={() => handleOpenPosOptionModal(menu, 'takeaway')}>
+                    <div key={menu.id} style={styles.menuCard} onClick={() => handleAddToTakeawayCart(menu)}>
                       <div>
                         <div style={{ fontWeight: '600', fontSize: '14px' }}>{menu.name}</div>
                         <div style={{ fontSize: '11px', color: '#60a5fa', margin: '2px 0' }}>{menu.category}</div>
@@ -1500,14 +1436,7 @@ export default function App() {
                       <div key={item.id} style={{ ...styles.cartRow, marginBottom: '8px' }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontWeight: '500', fontSize: '14px' }}>{item.name}</div>
-                          {item.options && (
-                            <div style={{ fontSize: '11px', color: '#60a5fa' }}>
-                              {item.options.ice} • {item.options.sugar}
-                            </div>
-                          )}
-                          <small style={{ color: '#9ca3af' }}>
-                            Rp {Number(item.price).toLocaleString()} x {item.qty}
-                          </small>
+                          <small style={{ color: '#9ca3af' }}>Rp {Number(item.price).toLocaleString()} x {item.qty}</small>
                         </div>
                         <div style={{ fontWeight: '600', marginRight: '12px' }}>Rp {(item.price * item.qty).toLocaleString()}</div>
                         <button style={styles.deleteBtn} onClick={() => handleRemoveFromTakeawayCart(item.id)}>✕</button>
@@ -1665,105 +1594,47 @@ export default function App() {
         </div>
       )}
 
-            {/* Modal Pembayaran Takeaway */}
-            {showTakeawayPaymentModal && selectedTakeawayOrder && (
-              <div style={styles.modalOverlay}>
-                <div style={styles.modalCard}>
-                  <h3 style={{ margin: '0 0 12px 0' }}>Pembayaran Takeaway {selectedTakeawayOrder.orderNo}</h3>
-                  <p style={{ fontSize: '13px', color: '#9ca3af', margin: '0 0 12px 0' }}>Platform: {selectedTakeawayOrder.platform}</p>
-      
-                  <div style={{ borderTop: '1px solid #334155', borderBottom: '1px solid #334155', padding: '8px 0', marginBottom: '12px' }}>
-                    {selectedTakeawayOrder.items.map((it, idx) => (
-                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
-                        <span>{it.qty}x {it.name}</span>
-                        <span>Rp {(it.price * it.qty).toLocaleString()}</span>
-                      </div>
-                    ))}
-                  </div>
-      
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#9ca3af', marginBottom: '4px' }}>
-                    <span>Subtotal:</span>
-                    <span>Rp {selectedTakeawayOrder.subTotal.toLocaleString()}</span>
-                  </div>
-      
-                  {selectedTakeawayOrder.discount > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#ef4444', marginBottom: '8px' }}>
-                      <span>Promo Diskon (Otomatis):</span>
-                      <span>- Rp {selectedTakeawayOrder.discount.toLocaleString()}</span>
-                    </div>
-                  )}
-      
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '16px', fontWeight: 'bold', color: '#10b981', marginBottom: '16px' }}>
-                    <span>Total Tagihan:</span>
-                    <span>Rp {selectedTakeawayOrder.total.toLocaleString()}</span>
-                  </div>
-      
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button style={{ ...styles.dangerOutlineBtn, flex: 1 }} onClick={() => setShowTakeawayPaymentModal(false)}>Batal</button>
-                    <button style={{ ...styles.primaryBtn, flex: 2, background: '#10b981' }} onClick={() => handlePayTakeaway(selectedTakeawayOrder)}>Konfirmasi Lunas & Print Struk</button>
-                  </div>
-                </div>
-              </div>
-            )}
-      {/* Modal Opsi Minuman untuk POS Kasir */}
-      {optionModalItem && (
+      {/* Modal Pembayaran Takeaway */}
+      {showTakeawayPaymentModal && selectedTakeawayOrder && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalCard}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: '16px' }}>Pilih Opsi: {optionModalItem.name}</h3>
-      
-            <div style={{ marginBottom: '12px' }}>
-              <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Ice Level:</label>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                {['Normal Ice', 'Less Ice', 'No Ice'].map(ice => (
-                  <button
-                    key={ice}
-                    type="button"
-                    onClick={() => setPosIceOption(ice)}
-                    style={{
-                      ...styles.roleBtn,
-                      background: posIceOption === ice ? '#3b82f6' : '#0f172a',
-                      color: posIceOption === ice ? '#fff' : '#94a3b8',
-                      border: '1px solid #334155'
-                    }}
-                  >
-                    {ice}
-                  </button>
-                ))}
-              </div>
+            <h3 style={{ margin: '0 0 12px 0' }}>Pembayaran Takeaway {selectedTakeawayOrder.orderNo}</h3>
+            <p style={{ fontSize: '13px', color: '#9ca3af', margin: '0 0 12px 0' }}>Platform: {selectedTakeawayOrder.platform}</p>
+
+            <div style={{ borderTop: '1px solid #334155', borderBottom: '1px solid #334155', padding: '8px 0', marginBottom: '12px' }}>
+              {selectedTakeawayOrder.items.map((it, idx) => (
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                  <span>{it.qty}x {it.name}</span>
+                  <span>Rp {(it.price * it.qty).toLocaleString()}</span>
+                </div>
+              ))}
             </div>
-      
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>Sugar Level:</label>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                {['Normal Sugar', 'Less Sugar', 'Extra Sugar'].map(sugar => (
-                  <button
-                    key={sugar}
-                    type="button"
-                    onClick={() => setPosSugarOption(sugar)}
-                    style={{
-                      ...styles.roleBtn,
-                      background: posSugarOption === sugar ? '#3b82f6' : '#0f172a',
-                      color: posSugarOption === sugar ? '#fff' : '#94a3b8',
-                      border: '1px solid #334155'
-                    }}
-                  >
-                    {sugar}
-                  </button>
-                ))}
-              </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#9ca3af', marginBottom: '4px' }}>
+              <span>Subtotal:</span>
+              <span>Rp {selectedTakeawayOrder.subTotal.toLocaleString()}</span>
             </div>
-      
+
+            {selectedTakeawayOrder.discount > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#ef4444', marginBottom: '8px' }}>
+                <span>Promo Diskon (Otomatis):</span>
+                <span>- Rp {selectedTakeawayOrder.discount.toLocaleString()}</span>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '16px', fontWeight: 'bold', color: '#10b981', marginBottom: '16px' }}>
+              <span>Total Tagihan:</span>
+              <span>Rp {selectedTakeawayOrder.total.toLocaleString()}</span>
+            </div>
+
             <div style={{ display: 'flex', gap: '8px' }}>
-              <button style={{ ...styles.dangerOutlineBtn, flex: 1 }} onClick={() => setOptionModalItem(null)}>
-                Batal
-              </button>
-              <button style={{ ...styles.primaryBtn, flex: 2 }} onClick={handleConfirmPosAddToCart}>
-                Tambahkan
-              </button>
+              <button style={{ ...styles.dangerOutlineBtn, flex: 1 }} onClick={() => setShowTakeawayPaymentModal(false)}>Batal</button>
+              <button style={{ ...styles.primaryBtn, flex: 2, background: '#10b981' }} onClick={() => handlePayTakeaway(selectedTakeawayOrder)}>Konfirmasi Lunas & Print Struk</button>
             </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }
