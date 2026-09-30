@@ -865,16 +865,18 @@ const executeAddToCartDineIn = (menuItem, iceOpt, sugarOpt) => {
     }
   };
 
-  const getTableRecap = (tableId) => {
+const getTableRecap = (tableId) => {
     const batches = confirmedOrders[tableId] || [];
     const recapMap = {};
 
     batches.forEach(b => {
       (b.items || []).forEach(it => {
-        if (recapMap[it.name]) {
-          recapMap[it.name].qty += it.qty;
+        // Buat key unik gabungan nama, iceLevel, dan sugarLevel
+        const key = `${it.name}_${it.iceLevel || ''}_${it.sugarLevel || ''}`;
+        if (recapMap[key]) {
+          recapMap[key].qty += it.qty;
         } else {
-          recapMap[it.name] = { ...it, name: it.name };
+          recapMap[key] = { ...it };
         }
       });
     });
@@ -1925,7 +1927,14 @@ const handleConfirmCustomOptions = () => {
             <div style={{ maxHeight: '160px', overflowY: 'auto', marginBottom: '16px' }}>
               {recapList.map((item, idx) => (
                 <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #374151', fontSize: '14px' }}>
-                  <span>{item.qty}x {item.name}</span>
+                  <div>
+                    <span>{item.qty}x {item.name}</span>
+                    {(item.iceLevel || item.sugarLevel) && (
+                      <div style={{ fontSize: '11px', color: '#38bdf8', marginTop: '2px' }}>
+                        {[item.iceLevel, item.sugarLevel].filter(Boolean).join(' • ')}
+                      </div>
+                    )}
+                  </div>
                   <span>Rp {(item.price * item.qty).toLocaleString()}</span>
                 </div>
               ))}
