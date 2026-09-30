@@ -757,6 +757,8 @@ const styles = {
     justify: 'center',
     fontWeight: '700',
     fontSize: '13px',
+    flexShrink: 0,
+    lineHeight: 1,
   },
   viewCartBtn: {
     background: 'linear-gradient(135deg, #d4af37 0%, #aa7c11 100%)',
@@ -839,7 +841,7 @@ const styles = {
     width: '60px',
     height: '60px',
     borderRadius: '50%',
-    background: 'rgba(212, 175, 55, 0.2)',
+    background: 'rgba(212, 175, 55, 0.15)',
     color: '#d4af37',
     display: 'flex',
     alignItems: 'center',
@@ -847,5 +849,8 @@ const styles = {
     fontSize: '28px',
     margin: '0 auto',
     border: '1px solid #d4af37',
+    boxSizing: 'border-box',
+    lineHeight: 1,
+    flexShrink: 0,
   },
 };
