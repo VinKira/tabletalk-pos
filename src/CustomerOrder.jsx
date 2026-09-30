@@ -69,7 +69,7 @@ export default function CustomerOrder({ tableId }) {
     const { data } = await supabase.from('categories').select('*').order('id', { ascending: true });
     if (data) {
       // Abaikan kategori 'Table' agar tidak muncul di tab pilihan
-      const filtered = data.filter((cat) => cat.name.toLowerCase() !== 'Table');
+      const filtered = data.filter((cat) => cat.name.toLowerCase() !== 'table');
       setCategories(filtered);
     }
   };
@@ -226,7 +226,7 @@ export default function CustomerOrder({ tableId }) {
   const totalCartCount = cart.reduce((sum, item) => sum + item.qty, 0);
   const cartSubtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const filteredMenuList = menuList
-    .filter((menu) => menu.category && menu.category.toLowerCase() !== 'Table')
+    .filter((menu) => menu.category && menu.category.toLowerCase() !== 'table')
     .filter((menu) => (selectedCategory === 'Semua' ? true : menu.category === selectedCategory));
 
   return (
