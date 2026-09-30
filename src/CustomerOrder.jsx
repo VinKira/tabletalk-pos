@@ -754,11 +754,12 @@ const styles = {
     borderRadius: '50%',
     display: 'flex',
     alignItems: 'center',
-    justify: 'center',
+    justifyContent: 'center', /* FIX: Mengoreksi 'justify' menjadi 'justifyContent' */
     fontWeight: '700',
     fontSize: '13px',
     flexShrink: 0,
     lineHeight: 1,
+    boxSizing: 'border-box',
   },
   viewCartBtn: {
     background: 'linear-gradient(135deg, #d4af37 0%, #aa7c11 100%)',
@@ -845,7 +846,7 @@ const styles = {
     color: '#d4af37',
     display: 'flex',
     alignItems: 'center',
-    justify: 'center',
+    justifyContent: 'center', /* FIX: Mengoreksi 'justify' menjadi 'justifyContent' */
     fontSize: '28px',
     margin: '0 auto',
     border: '1px solid #d4af37',
