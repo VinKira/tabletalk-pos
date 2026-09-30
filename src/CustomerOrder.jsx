@@ -67,7 +67,11 @@ export default function CustomerOrder({ tableId }) {
 
   const fetchCategories = async () => {
     const { data } = await supabase.from('categories').select('*').order('id', { ascending: true });
-    if (data) setCategories(data);
+    if (data) {
+      // Abaikan kategori 'Table' agar tidak muncul di tab pilihan
+      const filtered = data.filter((cat) => cat.name.toLowerCase() !== 'Table');
+      setCategories(filtered);
+    }
   };
 
   const fetchMenuList = async () => {
@@ -221,8 +225,9 @@ export default function CustomerOrder({ tableId }) {
 
   const totalCartCount = cart.reduce((sum, item) => sum + item.qty, 0);
   const cartSubtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
-  const filteredMenuList =
-    selectedCategory === 'Semua' ? menuList : menuList.filter((m) => m.category === selectedCategory);
+  const filteredMenuList = menuList
+    .filter((menu) => menu.category && menu.category.toLowerCase() !== 'Table')
+    .filter((menu) => (selectedCategory === 'Semua' ? true : menu.category === selectedCategory));
 
   return (
     <div style={styles.container}>
