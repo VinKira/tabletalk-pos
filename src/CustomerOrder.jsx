@@ -11,10 +11,24 @@ export default function CustomerOrder({ tableId }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
 
+  // --- STATE KATEGORI & OPTIONS ICE/SUGAR LEVEL ---
+  const [iceLevels, setIceLevels] = useState([]);
+  const [sugarLevels, setSugarLevels] = useState([]);
+  const [selectedIceCategories, setSelectedIceCategories] = useState([]);
+  const [selectedSugarCategories, setSelectedSugarCategories] = useState([]);
+
+  // --- STATE MODAL PILIHAN OPSI ---
+  const [showOptionModal, setShowOptionModal] = useState(false);
+  const [pendingMenuItem, setPendingMenuItem] = useState(null);
+  const [selectedIceOption, setSelectedIceOption] = useState('');
+  const [selectedSugarOption, setSelectedSugarOption] = useState('');
+
   useEffect(() => {
     fetchTableInfo();
     fetchCategories();
     fetchMenuList();
+    fetchIceLevelData();
+    fetchSugarLevelData();
 
     const menuSub = supabase
       .channel('customer:menu_list')
@@ -26,9 +40,23 @@ export default function CustomerOrder({ tableId }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, fetchCategories)
       .subscribe();
 
+    const iceSub = supabase
+      .channel('customer:ice_levels')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ice_levels' }, fetchIceLevelData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ice_level_categories' }, fetchIceLevelData)
+      .subscribe();
+
+    const sugarSub = supabase
+      .channel('customer:sugar_levels')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sugar_levels' }, fetchSugarLevelData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sugar_level_categories' }, fetchSugarLevelData)
+      .subscribe();
+
     return () => {
       supabase.removeChannel(menuSub);
       supabase.removeChannel(catSub);
+      supabase.removeChannel(iceSub);
+      supabase.removeChannel(sugarSub);
     };
   }, [tableId]);
 
@@ -47,21 +75,72 @@ export default function CustomerOrder({ tableId }) {
     if (data) setMenuList(data);
   };
 
+  const fetchIceLevelData = async () => {
+    const { data: levels } = await supabase.from('ice_levels').select('*').order('id', { ascending: true });
+    if (levels) setIceLevels(levels);
+
+    const { data: catMap } = await supabase.from('ice_level_categories').select('category_id');
+    if (catMap) setSelectedIceCategories(catMap.map(c => c.category_id));
+  };
+
+  const fetchSugarLevelData = async () => {
+    const { data: levels } = await supabase.from('sugar_levels').select('*').order('id', { ascending: true });
+    if (levels) setSugarLevels(levels);
+
+    const { data: catMap } = await supabase.from('sugar_level_categories').select('category_id');
+    if (catMap) setSelectedSugarCategories(catMap.map(c => c.category_id));
+  };
+
+  const checkCategoryOptions = (menuItem) => {
+    const categoryObj = categories.find(c => c.name === menuItem.category);
+    const catId = categoryObj ? categoryObj.id : null;
+
+    const hasIce = catId ? selectedIceCategories.includes(catId) : false;
+    const hasSugar = catId ? selectedSugarCategories.includes(catId) : false;
+
+    return { hasIce, hasSugar };
+  };
+
   const handleAddToCart = (menu) => {
+    const { hasIce, hasSugar } = checkCategoryOptions(menu);
+
+    if (hasIce || hasSugar) {
+      setPendingMenuItem(menu);
+      setSelectedIceOption(hasIce && iceLevels.length > 0 ? iceLevels[0].name : '');
+      setSelectedSugarOption(hasSugar && sugarLevels.length > 0 ? sugarLevels[0].name : '');
+      setShowOptionModal(true);
+    } else {
+      executeAddToCart(menu, '', '');
+    }
+  };
+
+  const executeAddToCart = (menu, iceOpt, sugarOpt) => {
     setCart((prevCart) => {
-      const existing = prevCart.find((item) => item.id === menu.id);
-      if (existing) {
-        return prevCart.map((item) => (item.id === menu.id ? { ...item, qty: item.qty + 1 } : item));
+      const existingIndex = prevCart.findIndex(
+        (item) => item.id === menu.id && item.iceLevel === iceOpt && item.sugarLevel === sugarOpt
+      );
+      if (existingIndex > -1) {
+        return prevCart.map((item, idx) =>
+          idx === existingIndex ? { ...item, qty: item.qty + 1 } : item
+        );
       }
-      return [...prevCart, { ...menu, qty: 1 }];
+      return [...prevCart, { ...menu, qty: 1, iceLevel: iceOpt, sugarLevel: sugarOpt }];
     });
   };
 
-  const handleUpdateQty = (itemId, delta) => {
+  const handleConfirmCustomOptions = () => {
+    if (pendingMenuItem) {
+      executeAddToCart(pendingMenuItem, selectedIceOption, selectedSugarOption);
+      setShowOptionModal(false);
+      setPendingMenuItem(null);
+    }
+  };
+
+  const handleUpdateQty = (cartItemKey, delta) => {
     setCart((prevCart) =>
       prevCart
-        .map((item) => {
-          if (item.id === itemId) {
+        .map((item, index) => {
+          if (index === cartItemKey) {
             const newQty = item.qty + delta;
             return newQty > 0 ? { ...item, qty: newQty } : null;
           }
@@ -76,7 +155,6 @@ export default function CustomerOrder({ tableId }) {
     setIsSubmitting(true);
 
     try {
-      // PERBAIKAN MEJA 4: Pastikan tableId dikonversi ke Number secara tegas
       const numericTableId = Number(tableId);
       let activeOrderId = null;
 
@@ -124,6 +202,8 @@ export default function CustomerOrder({ tableId }) {
         price: item.price,
         qty: item.qty,
         category: item.category || 'Makanan',
+        ice_level: item.iceLevel || '',
+        sugar_level: item.sugarLevel || ''
       }));
 
       const { error: itemsErr } = await supabase.from('order_items').insert(itemsToInsert);
@@ -146,10 +226,9 @@ export default function CustomerOrder({ tableId }) {
 
   return (
     <div style={styles.container}>
-      {/* Dynamic Background Lighting Effects */}
       <div style={styles.bgGlowCenter} />
 
-  {/* Header */}
+      {/* Header */}
       <header style={styles.header}>
         <div style={styles.brandWrapper}>
           <img src="/Logogold-nobg.png" alt="Table Talk Logo" style={styles.logoImage} />
@@ -199,14 +278,11 @@ export default function CustomerOrder({ tableId }) {
         ))}
       </div>
 
-      {/* Grid Display Menu - 1 Frame per Menu */}
+      {/* Grid Display Menu */}
       <div style={styles.menuGrid}>
         {filteredMenuList.map((menu) => {
-          const cartItem = cart.find((i) => i.id === menu.id);
           return (
             <div key={menu.id} style={styles.menuCard}>
-              
-      {/* Menu Image Container (Rasio 5:4) */}
               <div style={styles.imageWrapper}>
                 {menu.image_url ? (
                   <img src={menu.image_url} alt={menu.name} style={styles.menuImage} />
@@ -218,24 +294,14 @@ export default function CustomerOrder({ tableId }) {
                 <span style={styles.menuCategoryBadge}>{menu.category || 'MENU'}</span>
               </div>
 
-              {/* Menu Details */}
               <div style={styles.menuInfo}>
                 <h4 style={styles.menuName}>{menu.name}</h4>
                 <div style={styles.menuPrice}>Rp {Number(menu.price).toLocaleString('id-ID')}</div>
               </div>
 
-              {/* Action Button */}
-              {cartItem ? (
-                <div style={styles.qtyControlInline}>
-                  <button style={styles.qtyBtnInline} onClick={() => handleUpdateQty(menu.id, -1)}>-</button>
-                  <span style={styles.qtyTextInline}>{cartItem.qty}</span>
-                  <button style={styles.qtyBtnInline} onClick={() => handleUpdateQty(menu.id, 1)}>+</button>
-                </div>
-              ) : (
-                <button style={styles.addBtn} onClick={() => handleAddToCart(menu)}>
-                  + Tambah
-                </button>
-              )}
+              <button style={styles.addBtn} onClick={() => handleAddToCart(menu)}>
+                + Tambah
+              </button>
             </div>
           );
         })}
@@ -262,6 +328,81 @@ export default function CustomerOrder({ tableId }) {
         </div>
       )}
 
+      {/* Modal Selection Opsi Ice & Sugar Level */}
+      {showOptionModal && pendingMenuItem && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.drawerCard}>
+            <div style={styles.drawerHeader}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '18px', color: '#f3e9dc', fontFamily: 'serif' }}>Sesuaikan Pesanan</h3>
+                <span style={{ fontSize: '13px', color: '#d4af37', fontWeight: '600' }}>{pendingMenuItem.name}</span>
+              </div>
+              <button style={styles.closeBtn} onClick={() => setShowOptionModal(false)}>✕</button>
+            </div>
+
+            <div style={{ padding: '20px 0' }}>
+              {/* Opsi Ice Level */}
+              {checkCategoryOptions(pendingMenuItem).hasIce && (
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'block', color: '#a3b18a', fontSize: '12px', letterSpacing: '1px', marginBottom: '8px', textTransform: 'uppercase' }}>Pilih Ice Level:</label>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {iceLevels.map(ice => (
+                      <button
+                        key={ice.id}
+                        type="button"
+                        onClick={() => setSelectedIceOption(ice.name)}
+                        style={{
+                          padding: '8px 14px',
+                          borderRadius: '12px',
+                          fontSize: '13px',
+                          border: selectedIceOption === ice.name ? '1px solid #d4af37' : '1px solid rgba(212, 175, 55, 0.2)',
+                          background: selectedIceOption === ice.name ? 'rgba(212, 175, 55, 0.2)' : 'rgba(15, 30, 24, 0.6)',
+                          color: selectedIceOption === ice.name ? '#d4af37' : '#889988',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {ice.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Opsi Sugar Level */}
+              {checkCategoryOptions(pendingMenuItem).hasSugar && (
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'block', color: '#a3b18a', fontSize: '12px', letterSpacing: '1px', marginBottom: '8px', textTransform: 'uppercase' }}>Pilih Sugar Level:</label>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {sugarLevels.map(sugar => (
+                      <button
+                        key={sugar.id}
+                        type="button"
+                        onClick={() => setSelectedSugarOption(sugar.name)}
+                        style={{
+                          padding: '8px 14px',
+                          borderRadius: '12px',
+                          fontSize: '13px',
+                          border: selectedSugarOption === sugar.name ? '1px solid #d4af37' : '1px solid rgba(212, 175, 55, 0.2)',
+                          background: selectedSugarOption === sugar.name ? 'rgba(212, 175, 55, 0.2)' : 'rgba(15, 30, 24, 0.6)',
+                          color: selectedSugarOption === sugar.name ? '#d4af37' : '#889988',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {sugar.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button style={styles.submitOrderBtn} onClick={handleConfirmCustomOptions}>
+              Masukkan Keranjang
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Sliding Luxury Cart Modal */}
       {isCartOpen && (
         <div style={styles.modalOverlay}>
@@ -275,19 +416,24 @@ export default function CustomerOrder({ tableId }) {
             </div>
 
             <div style={styles.drawerBody}>
-              {cart.map((item) => (
-                <div key={item.id} style={styles.cartItemRow}>
+              {cart.map((item, index) => (
+                <div key={index} style={styles.cartItemRow}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: '600', fontSize: '14px', color: '#f3e9dc' }}>{item.name}</div>
-                    <div style={{ fontSize: '12px', color: '#889988' }}>
+                    {(item.iceLevel || item.sugarLevel) && (
+                      <div style={{ fontSize: '11px', color: '#d4af37', marginTop: '2px' }}>
+                        {[item.iceLevel, item.sugarLevel].filter(Boolean).join(' • ')}
+                      </div>
+                    )}
+                    <div style={{ fontSize: '12px', color: '#889988', marginTop: '2px' }}>
                       Rp {Number(item.price).toLocaleString('id-ID')}
                     </div>
                   </div>
 
                   <div style={styles.qtyControlInline}>
-                    <button style={styles.qtyBtnInline} onClick={() => handleUpdateQty(item.id, -1)}>-</button>
+                    <button style={styles.qtyBtnInline} onClick={() => handleUpdateQty(index, -1)}>-</button>
                     <span style={styles.qtyTextInline}>{item.qty}</span>
-                    <button style={styles.qtyBtnInline} onClick={() => handleUpdateQty(item.id, 1)}>+</button>
+                    <button style={styles.qtyBtnInline} onClick={() => handleUpdateQty(index, 1)}>+</button>
                   </div>
 
                   <div style={{ width: '80px', textAlign: 'right', fontWeight: '600', color: '#d4af37', fontSize: '14px' }}>
@@ -332,7 +478,7 @@ export default function CustomerOrder({ tableId }) {
   );
 }
 
-// Visual Styling Sesuai Tema Emerald Gold
+// Visual Styling
 const styles = {
   container: {
     minHeight: '100vh',
@@ -372,18 +518,10 @@ const styles = {
     alignItems: 'center',
     gap: '10px',
   },
-logoImage: {
+  logoImage: {
     width: '80px',
     height: '80px',
     objectFit: 'contain',
-  },
-  brandTitle: {
-    fontSize: '18px',
-    color: '#f3e9dc',
-    fontWeight: '700',
-    margin: 0,
-    letterSpacing: '1px',
-    lineHeight: '1.1',
   },
   brandTagline: {
     fontSize: '9px',
@@ -402,7 +540,7 @@ logoImage: {
     alignItems: 'center',
     gap: '6px',
     backgroundColor: 'rgba(5, 17, 13, 0.6)',
-    marginLeft: 'auto', // Memindah badge ke ujung kanan
+    marginLeft: 'auto',
   },
   pulseDot: {
     width: '6px',
@@ -444,10 +582,10 @@ logoImage: {
     display: 'flex',
     gap: '10px',
     overflowX: 'auto',
-    paddingLeft: '8px',   // Memberi ruang agar "Semua" tidak mepet/terpotong di kiri
-    paddingRight: '8px',  // Memberi ruang saat di-scroll sampai paling kanan
+    paddingLeft: '8px',
+    paddingRight: '8px',
     paddingBottom: '16px',
-    justifyContent: 'flex-start', // Memastikan urutan scroll mulai dari paling kiri
+    justifyContent: 'flex-start',
     position: 'relative',
     zIndex: 2,
     scrollbarWidth: 'none',
@@ -490,7 +628,7 @@ logoImage: {
   },
   imageWrapper: {
     width: '100%',
-    aspectRatio: '5/4', // Mengunci rasio panjang banding lebar 5:4
+    aspectRatio: '5/4',
     borderRadius: '12px',
     overflow: 'hidden',
     position: 'relative',
@@ -499,7 +637,7 @@ logoImage: {
   },
   menuImage: {
     width: '100%',
-    height: '100%', // Mengisi penuh frame 5:4
+    height: '100%',
     objectFit: 'cover',
     display: 'block',
   },
@@ -509,7 +647,7 @@ logoImage: {
     backgroundColor: '#0a1d17',
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'center',
+    justify: 'center',
     color: '#d4af37',
     fontSize: '20px',
     fontWeight: 'bold',
@@ -616,7 +754,7 @@ logoImage: {
     borderRadius: '50%',
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'center',
+    justify: 'center',
     fontWeight: '700',
     fontSize: '13px',
   },
@@ -640,7 +778,7 @@ logoImage: {
     backdropFilter: 'blur(8px)',
     display: 'flex',
     alignItems: 'flex-end',
-    justifyContent: 'center',
+    justify: 'center',
     zIndex: 100,
   },
   drawerCard: {
@@ -705,7 +843,7 @@ logoImage: {
     color: '#d4af37',
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'center',
+    justify: 'center',
     fontSize: '28px',
     margin: '0 auto',
     border: '1px solid #d4af37',
