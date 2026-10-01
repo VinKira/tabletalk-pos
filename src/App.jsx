@@ -874,21 +874,17 @@ const getTableRecap = (tableId) => {
     const batches = confirmedOrders[tableId] || [];
     const recapMap = {};
 
-batches.forEach(b => {
-  (b.items || []).forEach(it => {
-    // Buat key unik gabungan nama, iceLevel, dan sugarLevel
-    const key = `${it.name}_${it.iceLevel || ''}_${it.sugarLevel || ''}`;
-    if (recapMap[key]) {
-      recapMap[key].qty += it.qty;
-    } else {
-      // Pastikan id (menu_id) tetap terbawa dengan presisi untuk kalkulasi promo
-      recapMap[key] = { 
-        ...it, 
-        id: Number(it.id) 
-      };
-    }
-  });
-});
+    batches.forEach(b => {
+      (b.items || []).forEach(it => {
+        // Buat key unik gabungan nama, iceLevel, dan sugarLevel
+        const key = `${it.name}_${it.iceLevel || ''}_${it.sugarLevel || ''}`;
+        if (recapMap[key]) {
+          recapMap[key].qty += it.qty;
+        } else {
+          recapMap[key] = { ...it };
+        }
+      });
+    });
 
     const recapList = Object.values(recapMap);
     const subTotal = recapList.reduce((sum, item) => sum + (item.price * item.qty), 0);
@@ -1935,18 +1931,16 @@ const handleConfirmCustomOptions = () => {
             
             <div style={{ maxHeight: '160px', overflowY: 'auto', marginBottom: '16px' }}>
               {recapList.map((item, idx) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', textAlign: 'left' }}>
-                  <div style={{ textAlign: 'left', flex: 1 }}>
-                    <div style={{ fontWeight: '500', textAlign: 'left' }}>{item.name} x {item.qty}</div>
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #374151', fontSize: '14px' }}>
+                  <div>
+                    <span>{item.qty}x {item.name}</span>
                     {(item.iceLevel || item.sugarLevel) && (
-                      <div style={{ fontSize: '11px', color: '#f59e0b', textAlign: 'left', marginTop: '2px' }}>
+                      <div style={{ fontSize: '11px', color: '#38bdf8', marginTop: '2px' }}>
                         {[item.iceLevel, item.sugarLevel].filter(Boolean).join(' • ')}
                       </div>
                     )}
                   </div>
-                  <div style={{ fontWeight: '600', textAlign: 'right', marginLeft: '12px' }}>
-                    Rp {(item.price * item.qty).toLocaleString('id-ID')}
-                  </div>
+                  <span>Rp {(item.price * item.qty).toLocaleString()}</span>
                 </div>
               ))}
             </div>
