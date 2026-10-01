@@ -1987,18 +1987,21 @@ const handleConfirmCustomOptions = () => {
 
             <div style={{ borderTop: '1px solid #334155', borderBottom: '1px solid #334155', padding: '8px 0', marginBottom: '12px' }}>
               {selectedTakeawayOrder.items.map((it, idx) => (
-                <div key={idx} style={{ marginBottom: '6px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
-                    <span>{it.qty}x {it.name}</span>
-                    <span>Rp {(it.price * it.qty).toLocaleString()}</span>
-                  </div>
-              
-                  {/* PENAMBAHAN: Subteks Ice & Sugar Level */}
-                  {(it.iceLevel || it.sugarLevel) && (
-                    <div style={{ fontSize: '11px', color: '#38bdf8', marginTop: '1px' }}>
-                      {[it.iceLevel, it.sugarLevel].filter(Boolean).join(' • ')}
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '6px 0', borderBottom: '1px solid #374151', fontSize: '13px' }}>
+                  <div style={{ display: 'flex', gap: '8px', flex: 1, textAlign: 'left' }}>
+                    <span style={{ fontWeight: '600', minWidth: '20px' }}>{it.qty}x</span>
+                    <div>
+                      <div style={{ fontWeight: '500' }}>{it.name}</div>
+                      {(it.iceLevel || it.sugarLevel) && (
+                        <div style={{ fontSize: '11px', color: '#38bdf8', marginTop: '2px' }}>
+                          {[it.iceLevel, it.sugarLevel].filter(Boolean).join(' • ')}
+                        </div>
+                      )}
                     </div>
-                  )}
+                  </div>
+                  <span style={{ fontWeight: '500', marginLeft: '12px', whiteSpace: 'nowrap' }}>
+                    Rp {(it.price * it.qty).toLocaleString()}
+                  </span>
                 </div>
               ))}
             </div>
