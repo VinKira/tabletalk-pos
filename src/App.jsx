@@ -1923,24 +1923,29 @@ const handleConfirmCustomOptions = () => {
         </div>
       )}
 
-      {/* Modal Pembayaran Dine-In */}
+{/* Modal Pembayaran Dine-In */}
       {showCheckoutModal && (
         <div style={styles.modalOverlay}>
-          <div style={styles.modalCard}>
+          <div style={{ ...styles.modalCard, width: '480px', maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
             <h3 style={{ margin: '0 0 16px 0', fontSize: '18px' }}>Rincian Pembayaran ({selectedTable.number})</h3>
             
-            <div style={{ maxHeight: '160px', overflowY: 'auto', marginBottom: '16px' }}>
+            <div style={{ flex: 1, maxHeight: '50vh', overflowY: 'auto', marginBottom: '16px', paddingRight: '4px' }}>
               {recapList.map((item, idx) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #374151', fontSize: '14px' }}>
-                  <div>
-                    <span>{item.qty}x {item.name}</span>
-                    {(item.iceLevel || item.sugarLevel) && (
-                      <div style={{ fontSize: '11px', color: '#38bdf8', marginTop: '2px' }}>
-                        {[item.iceLevel, item.sugarLevel].filter(Boolean).join(' • ')}
-                      </div>
-                    )}
+                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '8px 0', borderBottom: '1px solid #374151', fontSize: '14px' }}>
+                  <div style={{ display: 'flex', gap: '8px', flex: 1, textAlign: 'left' }}>
+                    <span style={{ fontWeight: '600', minWidth: '24px' }}>{item.qty}x</span>
+                    <div>
+                      <div style={{ fontWeight: '500' }}>{item.name}</div>
+                      {(item.iceLevel || item.sugarLevel) && (
+                        <div style={{ fontSize: '11px', color: '#38bdf8', marginTop: '2px' }}>
+                          {[item.iceLevel, item.sugarLevel].filter(Boolean).join(' • ')}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <span>Rp {(item.price * item.qty).toLocaleString()}</span>
+                  <span style={{ fontWeight: '500', marginLeft: '12px', whiteSpace: 'nowrap' }}>
+                    Rp {(item.price * item.qty).toLocaleString()}
+                  </span>
                 </div>
               ))}
             </div>
