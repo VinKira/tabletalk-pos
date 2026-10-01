@@ -114,19 +114,22 @@ export default function App() {
     img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
   };
 
-  const calculateAutoDiscount = (recapList, rules = discountRules) => {
-    let totalDiscount = 0;
-    if (!rules || rules.length === 0) return 0;
+const calculateAutoDiscount = (recapList, rules = discountRules) => {
+  let totalDiscount = 0;
+  if (!rules || rules.length === 0) return 0;
+  
+  recapList.forEach(item => {
+    // Ambil ID menu baik dari item.id maupun item.menu_id
+    const itemId = Number(item.id || item.menu_id);
     
-    recapList.forEach(item => {
-      const matchedRules = rules.filter(r => Number(r.menuId) === Number(item.id) && item.qty >= r.minQty);
-      matchedRules.forEach(r => {
-        const multiplier = Math.floor(item.qty / r.minQty);
-        totalDiscount += multiplier * r.discountAmount;
-      });
+    const matchedRules = rules.filter(r => Number(r.menuId) === itemId && item.qty >= r.minQty);
+    matchedRules.forEach(r => {
+      const multiplier = Math.floor(item.qty / r.minQty);
+      totalDiscount += multiplier * r.discountAmount;
     });
-    return totalDiscount;
-  };
+  });
+  return totalDiscount;
+};
 
   // Fetch Data Awal & Realtime Subscription Supabase
   useEffect(() => {
@@ -874,17 +877,19 @@ const getTableRecap = (tableId) => {
     const batches = confirmedOrders[tableId] || [];
     const recapMap = {};
 
-    batches.forEach(b => {
-      (b.items || []).forEach(it => {
-        // Buat key unik gabungan nama, iceLevel, dan sugarLevel
-        const key = `${it.name}_${it.iceLevel || ''}_${it.sugarLevel || ''}`;
-        if (recapMap[key]) {
-          recapMap[key].qty += it.qty;
-        } else {
-          recapMap[key] = { ...it };
-        }
-      });
-    });
+batches.forEach(b => {
+  (b.items || []).forEach(it => {
+    const key = `${it.name}_${it.iceLevel || ''}_${it.sugarLevel || ''}`;
+    if (recapMap[key]) {
+      recapMap[key].qty += it.qty;
+    } else {
+      recapMap[key] = { 
+        ...it, 
+        id: Number(it.id || it.menu_id) // Memastikan 'id' selalu ada dan bertipe Number
+      };
+    }
+  });
+});
 
     const recapList = Object.values(recapMap);
     const subTotal = recapList.reduce((sum, item) => sum + (item.price * item.qty), 0);
