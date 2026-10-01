@@ -764,16 +764,21 @@ export default function App() {
     }
   };
 
-  // Helper Cek Categori Has Options
-  const checkCategoryOptions = (menuItem) => {
-    const categoryObj = categories.find(c => c.name === menuItem.category);
-    const catId = categoryObj ? categoryObj.id : null;
-  
-    const hasIce = catId ? selectedIceCategories.includes(catId) : false;
-    const hasSugar = catId ? selectedSugarCategories.includes(catId) : false;
-  
-    return { hasIce, hasSugar };
-  };
+// Helper Cek Categori Has Options
+const checkCategoryOptions = (menuItem) => {
+  if (!menuItem) return { hasIce: false, hasSugar: false };
+
+  const categoryObj = categories.find(c => c.name === menuItem.category);
+  const catId = categoryObj ? categoryObj.id : null;
+
+  // Logic Exception: Jika nama menu mengandung kata "Hot", bypass opsi Ice Level menjadi false
+  const isHotMenu = menuItem.name ? menuItem.name.toLowerCase().includes('hot') : false;
+
+  const hasIce = (!isHotMenu && catId) ? selectedIceCategories.includes(catId) : false;
+  const hasSugar = catId ? selectedSugarCategories.includes(catId) : false;
+
+  return { hasIce, hasSugar };
+};
   
 const handleAddToCart = (menuItem) => {
   if (!selectedTable || selectedTable.status !== 'occupied') return;
