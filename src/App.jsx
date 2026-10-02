@@ -119,10 +119,10 @@ const calculateAutoDiscount = (recapList, rules = discountRules) => {
   if (!rules || rules.length === 0) return 0;
   
   recapList.forEach(item => {
-    // Ambil ID menu baik dari item.id maupun item.menu_id
-    const itemId = Number(item.id || item.menu_id);
+    // Prioritaskan menu_id agar mengacu pada ID Master Menu
+    const targetMenuId = Number(item.menu_id || item.id);
     
-    const matchedRules = rules.filter(r => Number(r.menuId) === itemId && item.qty >= r.minQty);
+    const matchedRules = rules.filter(r => Number(r.menuId) === targetMenuId && item.qty >= r.minQty);
     matchedRules.forEach(r => {
       const multiplier = Math.floor(item.qty / r.minQty);
       totalDiscount += multiplier * r.discountAmount;
@@ -308,7 +308,8 @@ const calculateAutoDiscount = (recapList, rules = discountRules) => {
           time: new Date(b.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
           type: 'Order',
           items: (b.order_items || []).map(it => ({
-            id: Number(it.menu_id),
+            id: Number(it.id),
+            menu_id: Number(it.menu_id),
             name: it.menu_name,
             price: Number(it.price),
             qty: Number(it.qty),
@@ -344,7 +345,8 @@ const calculateAutoDiscount = (recapList, rules = discountRules) => {
     if (takeaways) {
       const formattedTakeaway = takeaways.map(t => {
         const items = (t.order_items || []).map(it => ({
-          id: Number(it.menu_id),
+          id: Number(it.id),
+          menu_id: Number(it.menu_id),
           name: it.menu_name,
           price: Number(it.price),
           qty: Number(it.qty),
@@ -885,7 +887,8 @@ batches.forEach(b => {
     } else {
       recapMap[key] = { 
         ...it, 
-        id: Number(it.id || it.menu_id) // Memastikan 'id' selalu ada dan bertipe Number
+        menu_id: Number(it.menu_id || it.id),
+        id: Number(it.id || it.menu_id)
       };
     }
   });
