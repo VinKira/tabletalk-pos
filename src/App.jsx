@@ -1006,7 +1006,7 @@ const handleConfirmCustomOptions = () => {
     setTakeawayCart(takeawayCart.filter(item => item.id !== itemId));
   };
 
-  const handleConfirmTakeawayOrder = async () => {
+const handleConfirmTakeawayOrder = async () => {
     if (takeawayCart.length === 0) return alert('Keranjang Takeaway kosong!');
 
     let generatedOrderNo = '';
@@ -1018,9 +1018,9 @@ const handleConfirmCustomOptions = () => {
       generatedOrderNo = `#${takeawayOrderNoInput.trim()}`;
     }
 
-  const subTotal = takeawayCart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+    const subTotal = takeawayCart.reduce((sum, item) => sum + (item.price * item.qty), 0);
 
-    // Grouping khusus promo berdasarkan menu_id untuk Takeaway
+    // Grouping khusus promo berdasarkan menu_id untuk Takeaway (Mengabaikan Varian Ice/Sugar)
     const takeawayPromoMap = {};
     takeawayCart.forEach(item => {
       const menuId = Number(item.id || item.menu_id);
@@ -1618,7 +1618,7 @@ const handleConfirmCustomOptions = () => {
                     ) : (
                       <div style={styles.menuGrid}>
                         {menuList.map(menu => (
-                          <div key={menu.id} style={styles.menuCard} onClick={() => handleAddToTakeawayCart(menu)}>
+                          <div key={menu.id} style={styles.menuCard} onClick={() => handleAddToCart(menu)}>
                             <div>
                               <div style={{ fontWeight: '600', fontSize: '14px' }}>{menu.name}</div>
                               <div style={{ fontSize: '11px', color: '#60a5fa', margin: '2px 0' }}>{menu.category}</div>
@@ -1627,8 +1627,8 @@ const handleConfirmCustomOptions = () => {
                             <button 
                               style={styles.addMenuBtn} 
                               onClick={(e) => {
-                                e.stopPropagation(); // Mencegah pencetakan ganda
-                                handleAddToTakeawayCart(menu);
+                                e.stopPropagation();
+                                handleAddToCart(menu);
                               }}
                             >
                               +
