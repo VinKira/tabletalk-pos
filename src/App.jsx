@@ -964,7 +964,7 @@ const handleAddToTakeawayCart = (menuItem) => {
     setPendingMenuItem(menuItem);
     setSelectedIceOption(hasIce && iceLevels.length > 0 ? iceLevels[0].name : '');
     setSelectedSugarOption(hasSugar && sugarLevels.length > 0 ? sugarLevels[0].name : '');
-    setOptionTargetMode('takeaway');
+    setOptionTargetMode('takeaway'); // Menentukan target penyimpanan keranjang
     setShowOptionModal(true);
   } else {
     executeAddToCartTakeaway(menuItem, '', '');
@@ -1618,13 +1618,21 @@ const handleConfirmCustomOptions = () => {
                     ) : (
                       <div style={styles.menuGrid}>
                         {menuList.map(menu => (
-                          <div key={menu.id} style={styles.menuCard} onClick={() => handleAddToCart(menu)}>
+                          <div key={menu.id} style={styles.menuCard} onClick={() => handleAddToTakeawayCart(menu)}>
                             <div>
                               <div style={{ fontWeight: '600', fontSize: '14px' }}>{menu.name}</div>
                               <div style={{ fontSize: '11px', color: '#60a5fa', margin: '2px 0' }}>{menu.category}</div>
                               <div style={{ fontSize: '13px', color: '#9ca3af' }}>Rp {Number(menu.price).toLocaleString()}</div>
                             </div>
-                            <button style={styles.addMenuBtn}>+</button>
+                            <button 
+                              style={styles.addMenuBtn} 
+                              onClick={(e) => {
+                                e.stopPropagation(); // Mencegah pencetakan ganda
+                                handleAddToTakeawayCart(menu);
+                              }}
+                            >
+                              +
+                            </button>
                           </div>
                         ))}
                       </div>
