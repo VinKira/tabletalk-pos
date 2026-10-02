@@ -206,7 +206,7 @@ const checkCategoryOptions = (menuItem) => {
       const itemsToInsert = cart.map((item) => ({
         order_id: activeOrderId,
         batch_id: batchData.id,
-        menu_id: item.id,
+        menu_id: Number(item.menu_id || item.id), // Ensure Master Menu ID is explicitly sent
         menu_name: item.name,
         price: item.price,
         qty: item.qty,
