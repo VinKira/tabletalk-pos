@@ -116,12 +116,10 @@ export default function App() {
 
 const calculateAutoDiscount = (recapList, rules = discountRules) => {
   let totalDiscount = 0;
-  if (!rules || rules.length === 0) return 0;
+  if (!rules || rules.length === 0 || !recapList || recapList.length === 0) return 0;
   
   recapList.forEach(item => {
-    // Prioritaskan menu_id agar mengacu pada ID Master Menu
     const targetMenuId = Number(item.menu_id || item.id);
-    
     const matchedRules = rules.filter(r => Number(r.menuId) === targetMenuId && item.qty >= r.minQty);
     matchedRules.forEach(r => {
       const multiplier = Math.floor(item.qty / r.minQty);
@@ -878,25 +876,40 @@ const executeAddToCartDineIn = (menuItem, iceOpt, sugarOpt) => {
 const getTableRecap = (tableId) => {
     const batches = confirmedOrders[tableId] || [];
     const recapMap = {};
+    const promoRecapMap = {};
 
-batches.forEach(b => {
-  (b.items || []).forEach(it => {
-    const key = `${it.name}_${it.iceLevel || ''}_${it.sugarLevel || ''}`;
-    if (recapMap[key]) {
-      recapMap[key].qty += it.qty;
-    } else {
-      recapMap[key] = { 
-        ...it, 
-        menu_id: Number(it.menu_id || it.id),
-        id: Number(it.id || it.menu_id)
-      };
-    }
-  });
-});
+    batches.forEach(b => {
+      (b.items || []).forEach(it => {
+        // 1. Grouping untuk Rincian Struk/Tampilan Kasir (Berdasarkan Varian)
+        const key = `${it.name}_${it.iceLevel || ''}_${it.sugarLevel || ''}`;
+        if (recapMap[key]) {
+          recapMap[key].qty += it.qty;
+        } else {
+          recapMap[key] = { 
+            ...it, 
+            menu_id: Number(it.menu_id || it.id),
+            id: Number(it.id || it.menu_id)
+          };
+        }
+
+        // 2. Grouping Khusus Promo (Murni Berdasarkan Master menu_id)
+        const promoKey = Number(it.menu_id || it.id);
+        if (promoRecapMap[promoKey]) {
+          promoRecapMap[promoKey].qty += it.qty;
+        } else {
+          promoRecapMap[promoKey] = {
+            menu_id: promoKey,
+            qty: it.qty
+          };
+        }
+      });
+    });
 
     const recapList = Object.values(recapMap);
+    const promoRecapList = Object.values(promoRecapMap);
+
     const subTotal = recapList.reduce((sum, item) => sum + (item.price * item.qty), 0);
-    const autoDiscount = calculateAutoDiscount(recapList);
+    const autoDiscount = calculateAutoDiscount(promoRecapList);
     const finalTotal = Math.max(0, subTotal - autoDiscount);
 
     return { recapList, subTotal, autoDiscount, finalTotal, batches };
@@ -1005,10 +1018,22 @@ const handleConfirmCustomOptions = () => {
       generatedOrderNo = `#${takeawayOrderNoInput.trim()}`;
     }
 
-    const subTotal = takeawayCart.reduce((sum, item) => sum + (item.price * item.qty), 0);
-    const autoDiscount = calculateAutoDiscount(takeawayCart);
-    const totalAmount = Math.max(0, subTotal - autoDiscount);
+  const subTotal = takeawayCart.reduce((sum, item) => sum + (item.price * item.qty), 0);
 
+    // Grouping khusus promo berdasarkan menu_id untuk Takeaway
+    const takeawayPromoMap = {};
+    takeawayCart.forEach(item => {
+      const menuId = Number(item.id || item.menu_id);
+      if (takeawayPromoMap[menuId]) {
+        takeawayPromoMap[menuId].qty += item.qty;
+      } else {
+        takeawayPromoMap[menuId] = { menu_id: menuId, qty: item.qty };
+      }
+    });
+
+    const autoDiscount = calculateAutoDiscount(Object.values(takeawayPromoMap));
+    const totalAmount = Math.max(0, subTotal - autoDiscount);
+    
     const { data: orderData, error: orderErr } = await supabase
       .from('orders')
       .insert([{
