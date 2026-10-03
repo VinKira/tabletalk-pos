@@ -257,7 +257,24 @@ const calculateAutoDiscount = (recapList, rules = discountRules) => {
   };
 
 // Synchronize Active Orders (Dine-In & Takeaway) from Supabase
-  const fetchActiveOrders = async (currentRules = discountRules) => {
+const fetchActiveOrders = async (currentRules = null) => {
+    // 0. Ambil discount rules terbaru jika tidak dipasing dari parameter
+    let activeRules = currentRules;
+    if (!activeRules || activeRules.length === 0) {
+      const { data: rulesData } = await supabase.from('discount_rules').select('*').order('id', { ascending: true });
+      if (rulesData) {
+        activeRules = rulesData.map(item => ({
+          id: item.id,
+          menuId: Number(item.menu_id),
+          menuName: item.menu_name,
+          minQty: Number(item.min_qty),
+          discountAmount: Number(item.discount_amount)
+        }));
+      } else {
+        activeRules = [];
+      }
+    }
+
     const { data: openSessions } = await supabase
       .from('table_sessions')
       .select('*')
@@ -368,7 +385,7 @@ const calculateAutoDiscount = (recapList, rules = discountRules) => {
           }
         });
         
-        const calculatedDiscount = calculateAutoDiscount(Object.values(takeawayPromoMap), currentRules);
+        const calculatedDiscount = calculateAutoDiscount(Object.values(takeawayPromoMap), activeRules);
         const discount = t.is_paid ? (Number(t.discount) || 0) : calculatedDiscount;
         const total = Math.max(0, subTotal - discount);
 
