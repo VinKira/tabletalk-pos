@@ -1873,7 +1873,7 @@ const handleConfirmTakeawayOrder = async () => {
                           <small style={{ color: '#9ca3af' }}>Rp {Number(item.price).toLocaleString()} x {item.qty}</small>
                         </div>
                         <div style={{ fontWeight: '600', marginRight: '12px' }}>Rp {(item.price * item.qty).toLocaleString()}</div>
-                        <button style={styles.deleteBtn} onClick={() => handleRemoveFromTakeawayCart(item)}>X</button>
+                        <button style={styles.deleteBtn} onClick={() => handleRemoveFromTakeawayCart(item.id)}>X</button>
                       </div>
                     ))
                   )}
