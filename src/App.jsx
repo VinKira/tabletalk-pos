@@ -674,7 +674,10 @@ const fetchActiveOrders = async (currentRules = null) => {
     if (levels) setIceLevels(levels);
 
     const { data: catMap } = await supabase.from('ice_level_categories').select('category_id');
-    if (catMap) setSelectedIceCategories(catMap.map(c => c.category_id));
+    if (catMap) {
+      const ids = catMap.map(c => Number(c.category_id));
+      setSelectedIceCategories(ids);
+    }
   };
 
   const fetchSugarLevelData = async () => {
@@ -682,7 +685,10 @@ const fetchActiveOrders = async (currentRules = null) => {
     if (levels) setSugarLevels(levels);
 
     const { data: catMap } = await supabase.from('sugar_level_categories').select('category_id');
-    if (catMap) setSelectedSugarCategories(catMap.map(c => c.category_id));
+    if (catMap) {
+      const ids = catMap.map(c => Number(c.category_id));
+      setSelectedSugarCategories(ids);
+    }
   };
 
   const handleSaveIce = async (e) => {
@@ -709,15 +715,19 @@ const fetchActiveOrders = async (currentRules = null) => {
     }
   };
 
-  const handleToggleIceCategory = async (categoryId) => {
-    const exists = selectedIceCategories.includes(categoryId);
+const handleToggleIceCategory = async (categoryId) => {
+    const targetId = Number(categoryId);
+    const exists = selectedIceCategories.includes(targetId);
+
+    // Update state lokal secara instan
     if (exists) {
-      await supabase.from('ice_level_categories').delete().eq('category_id', categoryId);
+      setSelectedIceCategories(prev => prev.filter(id => id !== targetId));
+      await supabase.from('ice_level_categories').delete().eq('category_id', targetId);
     } else {
-      await supabase.from('ice_level_categories').insert([{ category_id: categoryId }]);
+      setSelectedIceCategories(prev => [...prev, targetId]);
+      await supabase.from('ice_level_categories').insert([{ category_id: targetId }]);
     }
     fetchIceLevelData();
-    fetchCategories();
   };
 
   const handleSaveSugar = async (e) => {
@@ -744,15 +754,19 @@ const fetchActiveOrders = async (currentRules = null) => {
     }
   };
 
-  const handleToggleSugarCategory = async (categoryId) => {
-    const exists = selectedSugarCategories.includes(categoryId);
+const handleToggleSugarCategory = async (categoryId) => {
+    const targetId = Number(categoryId);
+    const exists = selectedSugarCategories.includes(targetId);
+
+    // Update state lokal secara instan
     if (exists) {
-      await supabase.from('sugar_level_categories').delete().eq('category_id', categoryId);
+      setSelectedSugarCategories(prev => prev.filter(id => id !== targetId));
+      await supabase.from('sugar_level_categories').delete().eq('category_id', targetId);
     } else {
-      await supabase.from('sugar_level_categories').insert([{ category_id: categoryId }]);
+      setSelectedSugarCategories(prev => [...prev, targetId]);
+      await supabase.from('sugar_level_categories').insert([{ category_id: targetId }]);
     }
     fetchSugarLevelData();
-    fetchCategories();
   };
   
   // --- 5. Alur Operasional POS (Dine-In) ---
@@ -811,7 +825,7 @@ const checkCategoryOptions = (menuItem) => {
   if (!menuItem) return { hasIce: false, hasSugar: false };
 
   const categoryObj = categories.find(c => c.name === menuItem.category);
-  const catId = categoryObj ? categoryObj.id : null;
+  const catId = categoryObj ? Number(categoryObj.id) : null;
 
   // Logic Exception: Jika nama menu mengandung kata "Hot", bypass opsi Ice Level menjadi false
   const isHotMenu = menuItem.name ? menuItem.name.toLowerCase().includes('hot') : false;
