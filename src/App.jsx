@@ -175,13 +175,19 @@ const calculateAutoDiscount = (recapList, rules = discountRules) => {
     const iceChannel = supabase
       .channel('public:ice_levels_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ice_levels' }, () => fetchIceLevelData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'ice_level_categories' }, () => fetchIceLevelData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ice_level_categories' }, () => {
+        fetchIceLevelData();
+        fetchCategories(); // <-- TAMBAHKAN PEMANGGILAN INI
+      })
       .subscribe();
 
     const sugarChannel = supabase
       .channel('public:sugar_levels_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sugar_levels' }, () => fetchSugarLevelData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sugar_level_categories' }, () => fetchSugarLevelData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sugar_level_categories' }, () => {
+        fetchSugarLevelData();
+        fetchCategories(); // <-- TAMBAHKAN PEMANGGILAN INI
+      })
       .subscribe();
     
     // 6. Listen Perubahan Transaksi & Order Realtime
@@ -711,6 +717,7 @@ const fetchActiveOrders = async (currentRules = null) => {
       await supabase.from('ice_level_categories').insert([{ category_id: categoryId }]);
     }
     fetchIceLevelData();
+    fetchCategories();
   };
 
   const handleSaveSugar = async (e) => {
@@ -745,6 +752,7 @@ const fetchActiveOrders = async (currentRules = null) => {
       await supabase.from('sugar_level_categories').insert([{ category_id: categoryId }]);
     }
     fetchSugarLevelData();
+    fetchCategories();
   };
   
   // --- 5. Alur Operasional POS (Dine-In) ---
