@@ -354,7 +354,21 @@ const calculateAutoDiscount = (recapList, rules = discountRules) => {
         
         const subTotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
         
-        const calculatedDiscount = calculateAutoDiscount(items, currentRules);
+        // Grouping khusus promo berdasarkan menu_id (Gabungkan qty semua varian)
+        const takeawayPromoMap = {};
+        items.forEach(it => {
+          const targetId = Number(it.menu_id || it.id);
+          if (takeawayPromoMap[targetId]) {
+            takeawayPromoMap[targetId].qty += Number(it.qty);
+          } else {
+            takeawayPromoMap[targetId] = {
+              menu_id: targetId,
+              qty: Number(it.qty)
+            };
+          }
+        });
+        
+        const calculatedDiscount = calculateAutoDiscount(Object.values(takeawayPromoMap), currentRules);
         const discount = t.is_paid ? (Number(t.discount) || 0) : calculatedDiscount;
         const total = Math.max(0, subTotal - discount);
 
@@ -1025,9 +1039,13 @@ const handleConfirmTakeawayOrder = async () => {
     takeawayCart.forEach(item => {
       const menuId = Number(item.id || item.menu_id);
       if (takeawayPromoMap[menuId]) {
-        takeawayPromoMap[menuId].qty += item.qty;
+        takeawayPromoMap[menuId].qty += Number(item.qty);
       } else {
-        takeawayPromoMap[menuId] = { menu_id: menuId, qty: item.qty };
+        takeawayPromoMap[menuId] = { 
+          menu_id: menuId, 
+          id: menuId, 
+          qty: Number(item.qty) 
+        };
       }
     });
 
