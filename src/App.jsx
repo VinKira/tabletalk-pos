@@ -2310,7 +2310,6 @@ const handleConfirmTakeawayOrder = async () => {
               </button>
           </div>
       </div>
-    </div>
   );
 }
 
