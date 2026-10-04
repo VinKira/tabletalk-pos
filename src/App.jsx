@@ -62,6 +62,10 @@ export default function App() {
   const [menuList, setMenuList] = useState([]);
   const [discountRules, setDiscountRules] = useState([]);
 
+  // Tambahkan 2 state ini untuk filter kategori & pencarian
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
+
   // TAMBAHAN STEP 1: Ice & Sugar Level States
   const [iceLevels, setIceLevels] = useState([]);
   const [sugarLevels, setSugarLevels] = useState([]);
@@ -1222,10 +1226,17 @@ const handleConfirmTakeawayOrder = async () => {
   const { recapList, subTotal, autoDiscount, batches } = activeTableId ? getTableRecap(activeTableId) : { recapList: [], subTotal: 0, autoDiscount: 0, batches: [] };
   const finalTotal = Math.max(0, subTotal - autoDiscount);
 
-  const filteredMenuList = selectedCategoryFilter === 'Semua' 
-    ? menuList 
-    : menuList.filter(m => m.category === selectedCategoryFilter);
-
+  const filteredMenuList = menuList.filter((item) => {
+    const matchesCategory =
+      selectedCategory === 'All' || item.category === selectedCategory;
+  
+    const matchesSearch = item.name
+      .toLowerCase()
+      .includes(searchQuery.toLowerCase());
+  
+    return matchesCategory && matchesSearch;
+  });
+  
   // ================= TAMPILAN PAGE SELF ORDER PELANGGAN (VIA QR) =================
   if (selfOrderTableId) {
     return <CustomerOrder tableId={selfOrderTableId} />;
@@ -1673,27 +1684,88 @@ const handleConfirmTakeawayOrder = async () => {
                         <button style={styles.primaryBtn} onClick={handleOpenTable}>Open Table</button>
                       </div>
                     ) : (
-                      <div style={styles.menuGrid}>
-                        {menuList.map(menu => (
-                          <div key={menu.id} style={styles.menuCard} onClick={() => handleAddToCart(menu)}>
-                            <div>
-                              <div style={{ fontWeight: '600', fontSize: '14px' }}>{menu.name}</div>
-                              <div style={{ fontSize: '11px', color: '#60a5fa', margin: '2px 0' }}>{menu.category}</div>
-                              <div style={{ fontSize: '13px', color: '#9ca3af' }}>Rp {Number(menu.price).toLocaleString()}</div>
-                            </div>
-                            <button 
-                              style={styles.addMenuBtn} 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleAddToCart(menu);
-                              }}
-                            >
-                              +
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    
+/* --- AREA TAMPILAN MENU (REPLACEMENT) --- */
+  <div className="flex flex-col gap-4">
+    
+    {/* BARNAV FILTER & SEARCH */}
+    <div className="flex flex-col md:flex-row justify-between items-center gap-3">
+      
+      {/* Tab Kategori Horizontal */}
+      <div className="flex gap-2 overflow-x-auto w-full pb-2 md:pb-0 scrollbar-none">
+        <button
+          onClick={() => setSelectedCategoryFilter('Semua')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+            selectedCategoryFilter === 'Semua'
+              ? 'bg-blue-600 text-white font-bold'
+              : 'bg-slate-800 text-gray-300 hover:bg-slate-700'
+          }`}
+        >
+          Semua
+        </button>
+
+        {/* Looping kategori dinamis dari state categories */}
+        {categories.map((cat) => (
+          <button
+            key={cat.id || cat.name}
+            onClick={() => setSelectedCategoryFilter(cat.name)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+              selectedCategoryFilter === cat.name
+                ? 'bg-blue-600 text-white font-bold'
+                : 'bg-slate-800 text-gray-300 hover:bg-slate-700'
+            }`}
+          >
+            {cat.name}
+          </button>
+        ))}
+      </div>
+
+      {/* Search Input */}
+      <div className="w-full md:w-64 flex-shrink-0">
+        <input
+          type="text"
+          placeholder="Cari menu... (misal: Matcha)"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full px-3 py-2 bg-slate-800 text-white border border-slate-700 rounded-lg text-sm focus:outline-none focus:border-blue-500 placeholder-gray-400"
+        />
+      </div>
+    </div>
+
+    {/* GRID DAFTAR MENU (Menggunakan filteredMenuList) */}
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+      {filteredMenuList.length > 0 ? (
+        filteredMenuList.map((item) => (
+          <div
+            key={item.id}
+            className="bg-slate-900 border border-slate-800 p-3 rounded-xl hover:border-slate-700 transition flex flex-col justify-between"
+          >
+            <div>
+              <h4 className="font-semibold text-white text-base">{item.name}</h4>
+              <span className="text-xs text-blue-400 font-medium">{item.category}</span>
+            </div>
+            <div className="flex justify-between items-center mt-3">
+              <span className="text-sm font-bold text-gray-200">
+                Rp {item.price ? item.price.toLocaleString('id-ID') : 0}
+              </span>
+              <button
+                onClick={() => handleAddToCart(item)} 
+                className="bg-blue-600 hover:bg-blue-500 text-white w-8 h-8 rounded-lg flex items-center justify-center font-bold"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        ))
+      ) : (
+        <div className="col-span-full text-center py-10 text-gray-400 text-sm">
+          Menu tidak ditemukan.
+        </div>
+      )}
+    </div>
+
+  </div>
+)}
                   </div>
                 )}
               </div>
