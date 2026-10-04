@@ -1744,7 +1744,7 @@ const handleConfirmTakeawayOrder = async () => {
                             </div>
                           ))}
                       </div>
-                      
+                     ...  
                   </div>
                 )}
               </div>
