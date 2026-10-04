@@ -1667,85 +1667,87 @@ const handleConfirmTakeawayOrder = async () => {
                   </div>
                 </div>
 
-{selectedTable && (
-  <div>
-    <h3 style={styles.sectionTitle}>Pilih Menu ({selectedTable.number})</h3>
-{activeTableStatus === 'available' ? (
-      <div style={styles.openTablePromptCard}>
-        <p style={{ margin: '0 0 16px 0', color: '#9ca3af' }}>Meja ini masih dalam keadaan kosong.</p>
-        <button style={styles.primaryBtn} onClick={handleOpenTable}>Open Table</button>
-      </div>
-    ) : (
-      <>
-        {/* FILTER KATEGORI MENU */}
-        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '16px' }}>
-          <button
-            type="button"
-            onClick={() => setCashierCategoryFilter('Semua')}
-            style={{
-              padding: '6px 14px',
-              borderRadius: '20px',
-              border: '1px solid #334155',
-              background: cashierCategoryFilter === 'Semua' ? '#3b82f6' : '#0f172a',
-              color: cashierCategoryFilter === 'Semua' ? '#fff' : '#94a3b8',
-              fontSize: '12px',
-              fontWeight: cashierCategoryFilter === 'Semua' ? '600' : 'normal',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              transition: 'all 0.2s'
-            }}
-          >
-            Semua
-          </button>
-          {categories.map(cat => (
-            <button
-              key={cat.id}
-              type="button"
-              onClick={() => setCashierCategoryFilter(cat.name)}
-              style={{
-                padding: '6px 14px',
-                borderRadius: '20px',
-                border: '1px solid #334155',
-                background: cashierCategoryFilter === cat.name ? '#3b82f6' : '#0f172a',
-                color: cashierCategoryFilter === cat.name ? '#fff' : '#94a3b8',
-                fontSize: '12px',
-                fontWeight: cashierCategoryFilter === cat.name ? '600' : 'normal',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                transition: 'all 0.2s'
-              }}
-            >
-              {cat.name}
-            </button>
-          ))}
-        </div>
+                {selectedTable && (
+                  <div>
+                    <h3 style={styles.sectionTitle}>Pilih Menu ({selectedTable.number})</h3>
+                    {activeTableStatus === 'available' ? (
+                      <div style={styles.openTablePromptCard}>
+                        <p style={{ margin: '0 0 16px 0', color: '#9ca3af' }}>Meja ini masih dalam keadaan kosong.</p>
+                        <button style={styles.primaryBtn} onClick={handleOpenTable}>Open Table</button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '16px' }}>
+{/* FILTER KATEGORI MENU (TAB ELEGANT & SIMPLE) */}
+                        <button
+                          type="button"
+                          onClick={() => setCashierCategoryFilter('Semua')}
+                          style={{
+                            padding: '6px 14px',
+                            borderRadius: '20px',
+                            border: '1px solid #334155',
+                            background: cashierCategoryFilter === 'Semua' ? '#3b82f6' : '#0f172a',
+                            color: cashierCategoryFilter === 'Semua' ? '#fff' : '#94a3b8',
+                            fontSize: '12px',
+                            fontWeight: cashierCategoryFilter === 'Semua' ? '600' : 'normal',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          Semua
+                        </button>
+                        {categories.map(cat => (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            onClick={() => setCashierCategoryFilter(cat.name)}
+                            style={{
+                              padding: '6px 14px',
+                              borderRadius: '20px',
+                              border: '1px solid #334155',
+                              background: cashierCategoryFilter === cat.name ? '#3b82f6' : '#0f172a',
+                              color: cashierCategoryFilter === cat.name ? '#fff' : '#94a3b8',
+                              fontSize: '12px',
+                              fontWeight: cashierCategoryFilter === cat.name ? '600' : 'normal',
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap',
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            {cat.name}
+                          </button>
+                        ))}
+                      </div>
+                    )} {/* <-- PASTIKAN ADA ')' DI SINI JIKA DI ATAS ADA EKSPRESI SEPERTI {condition && (...)} */}
 
-        {/* GRID MENU */}
-        <div style={styles.menuGrid}>
-          {menuList
-            .filter(menu => cashierCategoryFilter === 'Semua' || menu.category === cashierCategoryFilter)
-            .map(menu => (
-              <div key={menu.id} style={styles.menuCard} onClick={() => handleAddToCart(menu)}>
-                <div>
-                  <div style={{ fontWeight: '600', fontSize: '14px' }}>{menu.name}</div>
-                  <div style={{ fontSize: '13px', color: '#9ca3af', marginTop: '4px' }}>
-                    Rp {Number(menu.price).toLocaleString()}
+                      {/* GRID MENU DENGAN CARD MODERN SERUPA CAPTURE (TANPA TEXT KATEGORI) */}
+                      <div style={styles.menuGrid}>
+                        {menuList
+                          .filter(menu => cashierCategoryFilter === 'Semua' || menu.category === cashierCategoryFilter)
+                          .map(menu => (
+                            <div key={menu.id} style={styles.menuCard} onClick={() => handleAddToCart(menu)}>
+                              <div>
+                                <div style={{ fontWeight: '600', fontSize: '14px' }}>{menu.name}</div>
+                                <div style={{ fontSize: '13px', color: '#9ca3af', marginTop: '4px' }}>
+                                  Rp {Number(menu.price).toLocaleString()}
+                                </div>
+                              </div>
+                              <button 
+                                style={styles.addMenuBtn} 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAddToCart(menu);
+                                }}
+                              >
+                                +
+                              </button>
+                            </div>
+                          ))}
+                      </div>
+                      
                   </div>
-                </div>
-                <button 
-                  style={styles.addMenuBtn} 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleAddToCart(menu);
-                  }}
-                >
-                  +
-                </button>
+                )}
               </div>
-            ))}
-        </div>
-      </>
-    )}
               
               <div style={styles.rightPanel}>
                 {!selectedTable ? (
