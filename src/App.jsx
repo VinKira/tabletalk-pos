@@ -1744,7 +1744,7 @@ const handleConfirmTakeawayOrder = async () => {
                             </div>
                           ))}
                       </div>
-                    )}
+                      {/* BARIS 1747: Hapus karakter ')}' yang berdiri sendiri di sini */}
                   </div>
                 )}
               </div>
