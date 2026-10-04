@@ -1677,7 +1677,7 @@ const handleConfirmTakeawayOrder = async () => {
                       </div>
                     ) : (
                       <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '16px' }}>
-                      {/* FILTER KATEGORI MENU (TAB ELEGANT & SIMPLE) */}
+{/* FILTER KATEGORI MENU (TAB ELEGANT & SIMPLE) */}
                         <button
                           type="button"
                           onClick={() => setCashierCategoryFilter('Semua')}
@@ -1718,6 +1718,7 @@ const handleConfirmTakeawayOrder = async () => {
                           </button>
                         ))}
                       </div>
+                    )} {/* <-- PASTIKAN ADA ')' DI SINI JIKA DI ATAS ADA EKSPRESI SEPERTI {condition && (...)} */}
 
                       {/* GRID MENU DENGAN CARD MODERN SERUPA CAPTURE (TANPA TEXT KATEGORI) */}
                       <div style={styles.menuGrid}>
@@ -1747,7 +1748,7 @@ const handleConfirmTakeawayOrder = async () => {
                   </div>
                 )}
               </div>
-
+              
               <div style={styles.rightPanel}>
                 {!selectedTable ? (
                   <div style={styles.emptyStateContainer}>
