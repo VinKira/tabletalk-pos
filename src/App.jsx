@@ -1670,14 +1670,14 @@ const handleConfirmTakeawayOrder = async () => {
 {selectedTable && (
   <div>
     <h3 style={styles.sectionTitle}>Pilih Menu ({selectedTable.number})</h3>
-    {activeTableStatus === 'available' ? (
+{activeTableStatus === 'available' ? (
       <div style={styles.openTablePromptCard}>
         <p style={{ margin: '0 0 16px 0', color: '#9ca3af' }}>Meja ini masih dalam keadaan kosong.</p>
         <button style={styles.primaryBtn} onClick={handleOpenTable}>Open Table</button>
       </div>
     ) : (
       <>
-        {/* FILTER KATEGORI MENU (TAB ELEGANT & SIMPLE) */}
+        {/* FILTER KATEGORI MENU */}
         <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '16px' }}>
           <button
             type="button"
@@ -1720,7 +1720,7 @@ const handleConfirmTakeawayOrder = async () => {
           ))}
         </div>
 
-        {/* GRID MENU DENGAN CARD MODERN SERUPA CAPTURE (TANPA TEXT KATEGORI) */}
+        {/* GRID MENU */}
         <div style={styles.menuGrid}>
           {menuList
             .filter(menu => cashierCategoryFilter === 'Semua' || menu.category === cashierCategoryFilter)
@@ -1746,8 +1746,6 @@ const handleConfirmTakeawayOrder = async () => {
         </div>
       </>
     )}
-  </div>
-)}
               
               <div style={styles.rightPanel}>
                 {!selectedTable ? (
