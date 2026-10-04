@@ -2310,9 +2310,10 @@ const handleConfirmTakeawayOrder = async () => {
               </button>
           </div>
       </div>
-  );
+    );
+  }
 }
-
+          
 // Fullscreen Dark SaaS Stylesheet
 const styles = {
   appContainer: {
