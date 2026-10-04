@@ -1744,7 +1744,7 @@ const handleConfirmTakeawayOrder = async () => {
                             </div>
                           ))}
                       </div>
-                      
+                      Kalau customer sudah reserve Table Mahjong, jangan input Table Mahjong lagi ke orderan kasir !!
                   </div>
                 )}
               </div>
