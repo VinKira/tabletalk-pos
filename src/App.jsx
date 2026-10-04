@@ -2291,7 +2291,6 @@ const handleConfirmTakeawayOrder = async () => {
                   ))}
                 </div>
               </div>
-            )}
       
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
