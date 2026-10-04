@@ -2093,9 +2093,6 @@ const handleConfirmTakeawayOrder = async () => {
             </>
           )}
 
-        </div>
-      )}
-
       {/* Modal PIN / Password */}
       {showAuthModal && (
         <div style={styles.modalOverlay}>
