@@ -1676,8 +1676,8 @@ const handleConfirmTakeawayOrder = async () => {
                         <button style={styles.primaryBtn} onClick={handleOpenTable}>Open Table</button>
                       </div>
                     ) : (
-                      {/* FILTER KATEGORI MENU (TAB ELEGANT & SIMPLE) */}
                       <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '16px' }}>
+                      {/* FILTER KATEGORI MENU (TAB ELEGANT & SIMPLE) */}
                         <button
                           type="button"
                           onClick={() => setCashierCategoryFilter('Semua')}
