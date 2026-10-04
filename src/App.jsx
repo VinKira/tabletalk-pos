@@ -1867,7 +1867,7 @@ const handleConfirmTakeawayOrder = async () => {
                   </div>
                 )}
               </div>
-            </>
+            </div>
           ) : (
             /* ================= TAKEAWAY MODE ================= */
             <>
