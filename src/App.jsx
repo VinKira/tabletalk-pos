@@ -456,6 +456,9 @@ const fetchActiveOrders = async (currentRules = null) => {
   const [selfOrderCart, setSelfOrderCart] = useState([]);
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('Semua');
 
+  // TAMBAHKAN LINE INI (State filter kategori untuk Kasir Dine-In & Takeaway):
+  const [cashierCategoryFilter, setCashierCategoryFilter] = useState('Semua');
+  
   // Auto-Save Local Storage
   useEffect(() => {
     localStorage.setItem('pos_dinein_current_cart', JSON.stringify(currentCart));
@@ -1673,25 +1676,72 @@ const handleConfirmTakeawayOrder = async () => {
                         <button style={styles.primaryBtn} onClick={handleOpenTable}>Open Table</button>
                       </div>
                     ) : (
-                      <div style={styles.menuGrid}>
-                        {menuList.map(menu => (
-                          <div key={menu.id} style={styles.menuCard} onClick={() => handleAddToCart(menu)}>
-                            <div>
-                              <div style={{ fontWeight: '600', fontSize: '14px' }}>{menu.name}</div>
-                              <div style={{ fontSize: '11px', color: '#60a5fa', margin: '2px 0' }}>{menu.category}</div>
-                              <div style={{ fontSize: '13px', color: '#9ca3af' }}>Rp {Number(menu.price).toLocaleString()}</div>
-                            </div>
-                            <button 
-                              style={styles.addMenuBtn} 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleAddToCart(menu);
-                              }}
-                            >
-                              +
-                            </button>
-                          </div>
+                      {/* FILTER KATEGORI MENU (TAB ELEGANT & SIMPLE) */}
+                      <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '16px' }}>
+                        <button
+                          type="button"
+                          onClick={() => setCashierCategoryFilter('Semua')}
+                          style={{
+                            padding: '6px 14px',
+                            borderRadius: '20px',
+                            border: '1px solid #334155',
+                            background: cashierCategoryFilter === 'Semua' ? '#3b82f6' : '#0f172a',
+                            color: cashierCategoryFilter === 'Semua' ? '#fff' : '#94a3b8',
+                            fontSize: '12px',
+                            fontWeight: cashierCategoryFilter === 'Semua' ? '600' : 'normal',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          Semua
+                        </button>
+                        {categories.map(cat => (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            onClick={() => setCashierCategoryFilter(cat.name)}
+                            style={{
+                              padding: '6px 14px',
+                              borderRadius: '20px',
+                              border: '1px solid #334155',
+                              background: cashierCategoryFilter === cat.name ? '#3b82f6' : '#0f172a',
+                              color: cashierCategoryFilter === cat.name ? '#fff' : '#94a3b8',
+                              fontSize: '12px',
+                              fontWeight: cashierCategoryFilter === cat.name ? '600' : 'normal',
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap',
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            {cat.name}
+                          </button>
                         ))}
+                      </div>
+
+                      {/* GRID MENU DENGAN CARD MODERN SERUPA CAPTURE (TANPA TEXT KATEGORI) */}
+                      <div style={styles.menuGrid}>
+                        {menuList
+                          .filter(menu => cashierCategoryFilter === 'Semua' || menu.category === cashierCategoryFilter)
+                          .map(menu => (
+                            <div key={menu.id} style={styles.menuCard} onClick={() => handleAddToCart(menu)}>
+                              <div>
+                                <div style={{ fontWeight: '600', fontSize: '14px' }}>{menu.name}</div>
+                                <div style={{ fontSize: '13px', color: '#9ca3af', marginTop: '4px' }}>
+                                  Rp {Number(menu.price).toLocaleString()}
+                                </div>
+                              </div>
+                              <button 
+                                style={styles.addMenuBtn} 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAddToCart(menu);
+                                }}
+                              >
+                                +
+                              </button>
+                            </div>
+                          ))}
                       </div>
                     )}
                   </div>
@@ -1860,17 +1910,64 @@ const handleConfirmTakeawayOrder = async () => {
                   )}
                 </div>
 
-                <div style={styles.menuGrid}>
-                  {menuList.map(menu => (
-                    <div key={menu.id} style={styles.menuCard} onClick={() => handleAddToTakeawayCart(menu)}>
-                      <div>
-                        <div style={{ fontWeight: '600', fontSize: '14px' }}>{menu.name}</div>
-                        <div style={{ fontSize: '11px', color: '#60a5fa', margin: '2px 0' }}>{menu.category}</div>
-                        <div style={{ fontSize: '13px', color: '#9ca3af' }}>Rp {Number(menu.price).toLocaleString()}</div>
-                      </div>
-                      <button style={styles.addMenuBtn}>+</button>
-                    </div>
+                {/* FILTER KATEGORI MENU TAKEAWAY */}
+                <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px', marginBottom: '16px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setCashierCategoryFilter('Semua')}
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: '20px',
+                      border: '1px solid #334155',
+                      background: cashierCategoryFilter === 'Semua' ? '#3b82f6' : '#0f172a',
+                      color: cashierCategoryFilter === 'Semua' ? '#fff' : '#94a3b8',
+                      fontSize: '12px',
+                      fontWeight: cashierCategoryFilter === 'Semua' ? '600' : 'normal',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    Semua
+                  </button>
+                  {categories.map(cat => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setCashierCategoryFilter(cat.name)}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '20px',
+                        border: '1px solid #334155',
+                        background: cashierCategoryFilter === cat.name ? '#3b82f6' : '#0f172a',
+                        color: cashierCategoryFilter === cat.name ? '#fff' : '#94a3b8',
+                        fontSize: '12px',
+                        fontWeight: cashierCategoryFilter === cat.name ? '600' : 'normal',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      {cat.name}
+                    </button>
                   ))}
+                </div>
+                
+                {/* GRID MENU TAKEAWAY */}
+                <div style={styles.menuGrid}>
+                  {menuList
+                    .filter(menu => cashierCategoryFilter === 'Semua' || menu.category === cashierCategoryFilter)
+                    .map(menu => (
+                      <div key={menu.id} style={styles.menuCard} onClick={() => handleAddToTakeawayCart(menu)}>
+                        <div>
+                          <div style={{ fontWeight: '600', fontSize: '14px' }}>{menu.name}</div>
+                          <div style={{ fontSize: '13px', color: '#9ca3af', marginTop: '4px' }}>
+                            Rp {Number(menu.price).toLocaleString()}
+                          </div>
+                        </div>
+                        <button style={styles.addMenuBtn}>+</button>
+                      </div>
+                    ))}
                 </div>
               </div>
 
