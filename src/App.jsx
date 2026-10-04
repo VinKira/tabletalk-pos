@@ -2084,17 +2084,13 @@ const handleConfirmTakeawayOrder = async () => {
                           >
                             Selesaikan Order
                           </button>
-                        </div>
                       </div>
-                    ))
-                  )}
-                </div>
+                    </div>
+                  ))
+                )}
               </div>
-            </>
+            </div>
           )}
-
-        </div>
-      )}
 
       {/* Modal PIN / Password */}
       {showAuthModal && (
