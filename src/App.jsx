@@ -2311,10 +2311,10 @@ const handleConfirmTakeawayOrder = async () => {
             </div>
           </div>
         </div>
-      )}
-    </div>
-  );
-}
+        )}
+      </>
+    );
+  }
 
 // Fullscreen Dark SaaS Stylesheet
 const styles = {
