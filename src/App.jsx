@@ -1746,8 +1746,6 @@ const handleConfirmTakeawayOrder = async () => {
                       </div>
                     )}    
                   </div>
-                )}
-              </div>
               
               <div style={styles.rightPanel}>
                 {!selectedTable ? (
