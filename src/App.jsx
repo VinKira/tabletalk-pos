@@ -1718,7 +1718,6 @@ const handleConfirmTakeawayOrder = async () => {
                           </button>
                         ))}
                       </div>
-                    )} {/* <-- PASTIKAN ADA ')' DI SINI JIKA DI ATAS ADA EKSPRESI SEPERTI {condition && (...)} */}
 
                       {/* GRID MENU DENGAN CARD MODERN SERUPA CAPTURE (TANPA TEXT KATEGORI) */}
                       <div style={styles.menuGrid}>
