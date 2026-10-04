@@ -2308,13 +2308,11 @@ const handleConfirmTakeawayOrder = async () => {
               >
                 Tambahkan ke Order
               </button>
-            </div>
           </div>
-        </div>
-        )}
-      </>
-    );
-  }
+      </div>
+    </div>
+  );
+}
 
 // Fullscreen Dark SaaS Stylesheet
 const styles = {
