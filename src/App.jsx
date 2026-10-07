@@ -1744,7 +1744,17 @@ const handleConfirmTakeawayOrder = async () => {
                             </div>
                           ))}
                       </div>
-                      Kalau customer sudah reserve Table Mahjong, jangan input Table Mahjong lagi ke orderan kasir !!
+                      {/* Catatan Instruksi yang Konsisten Berjarak di Bawah Grid Menu */}
+                      <div style={{
+                        marginTop: '24px',
+                        marginBottom: '16px',
+                        fontSize: '12px',
+                        color: '#f59e0b',
+                        fontWeight: '500',
+                        lineHeight: '1.4'
+                      }}>
+                        Kalau customer sudah reserve Table Mahjong, jangan input Table Mahjong lagi ke orderan kasir !!
+                      </div>
                   </div>
                 )}
               </div>
