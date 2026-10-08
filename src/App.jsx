@@ -422,7 +422,7 @@ const fetchActiveOrders = async (currentRules = null) => {
     }
   };
 
-  // --- Fetch Data Laporan Keuangan ---
+// --- Fetch Data Laporan Keuangan (Fixed Date Filter) ---
   const fetchReportData = async () => {
     setReportLoading(true);
     let query = supabase
@@ -450,12 +450,14 @@ const fetchActiveOrders = async (currentRules = null) => {
       .order('created_at', { ascending: false });
 
     const now = new Date();
+    
     if (reportDateRange === 'today') {
       const todayStr = now.toISOString().split('T')[0];
       query = query.gte('created_at', `${todayStr}T00:00:00`).lte('created_at', `${todayStr}T23:59:59`);
     } else if (reportDateRange === 'week') {
-      const lastWeek = new Date(now.setDate(now.getDate() - 7)).toISOString();
-      query = query.gte('created_at', lastWeek);
+      const startOfWeek = new Date();
+      startOfWeek.setDate(now.getDate() - 7);
+      query = query.gte('created_at', startOfWeek.toISOString());
     } else if (reportDateRange === 'month') {
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
       query = query.gte('created_at', startOfMonth);
@@ -476,38 +478,58 @@ const fetchActiveOrders = async (currentRules = null) => {
     }
   }, [userRole, reportDateRange, customStartDate, customEndDate]);
 
-  // --- Export Data ke File CSV Excel ---
+// --- Export Data ke File CSV Excel ---
   const handleExportToExcel = () => {
     if (reportData.length === 0) return alert('Tidak ada data laporan untuk di-export!');
 
-    let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "ID Order,Tanggal & Waktu,Tipe Order,Platform / Meja,Nama Pelanggan,Subtotal (Rp),Diskon (Rp),Total Akhir (Rp),Status Bayar,Detail Menu\n";
+    let csvContent = "\uFEFF"; 
+    
+    const headers = [
+      "ID / No Order",
+      "Tanggal & Waktu",
+      "Tipe Order",
+      "Platform / Meja",
+      "Nama Pelanggan",
+      "Subtotal (Rp)",
+      "Diskon (Rp)",
+      "Total Akhir (Rp)",
+      "Status Bayar",
+      "Rincian Menu"
+    ];
+    
+    csvContent += headers.join(";") + "\n";
 
     reportData.forEach(row => {
       const dateFormatted = new Date(row.created_at).toLocaleString('id-ID').replace(/,/g, '');
+      
       const itemsDetail = (row.order_items || [])
-        .map(it => `${it.qty}x ${it.menu_name} (${[it.ice_level, it.sugar_level].filter(Boolean).join('/')})`)
+        .map(it => `${it.qty}x ${it.menu_name || it.name} (${[it.ice_level, it.sugar_level].filter(Boolean).join('/')})`)
         .join(' | ');
 
+      const computedSubtotal = Number(row.subtotal) || (row.order_items || []).reduce((s, i) => s + (Number(i.price) * Number(i.qty)), 0);
+      const computedDiscount = Number(row.discount) || 0;
+      const computedTotal = Number(row.total_amount) || Math.max(0, computedSubtotal - computedDiscount);
+
       const line = [
-        row.order_no || row.id,
+        `"${row.order_no || `#${row.id.slice(0, 6)}`}"`,
         `"${dateFormatted}"`,
-        row.order_type.toUpperCase(),
+        `"${(row.order_type || 'dine-in').toUpperCase()}"`,
         `"${row.platform || 'Dine-In'}"`,
         `"${row.customer_name || '-'}"`,
-        row.subtotal,
-        row.discount,
-        row.total_amount,
-        row.is_paid ? 'LUNAS' : 'BELUM',
-        `"${itemsDetail}"`
-      ].join(",");
+        computedSubtotal,
+        computedDiscount,
+        computedTotal,
+        row.is_paid ? "LUNAS" : "BELUM LUNAS",
+        `"${itemsDetail || '-'}"`
+      ].join(";");
 
       csvContent += line + "\n";
     });
 
-    const encodedUri = encodeURI(csvContent);
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", url);
     link.setAttribute("download", `Laporan_Keuangan_TableTalk_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
