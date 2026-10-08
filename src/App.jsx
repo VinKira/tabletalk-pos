@@ -29,12 +29,19 @@ export default function App() {
     }
   }, []);
 
-  // --- Auth & PIN Password State ---
-  const [userRole, setUserRole] = useState('cashier'); // 'cashier' | 'owner'
+// --- Auth & PIN Password State ---
+  const [userRole, setUserRole] = useState('cashier'); // 'cashier' | 'owner' | 'report'
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [targetRole, setTargetRole] = useState(null);
   const [pinInput, setPinInput] = useState('');
 
+  // --- State Laporan Keuangan (Report Page) ---
+  const [reportDateRange, setReportDateRange] = useState('today'); // 'today' | 'week' | 'month' | 'custom'
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  const [reportData, setReportData] = useState([]);
+  const [reportLoading, setReportLoading] = useState(false);
+  
   const handleRoleChangeRequest = (role) => {
     if (role === userRole) return;
     setTargetRole(role);
@@ -49,6 +56,9 @@ export default function App() {
       setShowAuthModal(false);
     } else if (targetRole === 'owner' && pinInput === '678910') {
       setUserRole('owner');
+      setShowAuthModal(false);
+    } else if (targetRole === 'report' && pinInput === '678910') { // PIN Report disamakan dengan Owner (678910)
+      setUserRole('report');
       setShowAuthModal(false);
     } else {
       alert('Password / PIN Salah!');
@@ -412,6 +422,98 @@ const fetchActiveOrders = async (currentRules = null) => {
     }
   };
 
+  // --- Fetch Data Laporan Keuangan ---
+  const fetchReportData = async () => {
+    setReportLoading(true);
+    let query = supabase
+      .from('orders')
+      .select(`
+        id,
+        order_no,
+        order_type,
+        platform,
+        customer_name,
+        subtotal,
+        discount,
+        total_amount,
+        is_paid,
+        created_at,
+        order_items (
+          menu_name,
+          qty,
+          price,
+          ice_level,
+          sugar_level
+        )
+      `)
+      .eq('is_paid', true)
+      .order('created_at', { ascending: false });
+
+    const now = new Date();
+    if (reportDateRange === 'today') {
+      const todayStr = now.toISOString().split('T')[0];
+      query = query.gte('created_at', `${todayStr}T00:00:00`).lte('created_at', `${todayStr}T23:59:59`);
+    } else if (reportDateRange === 'week') {
+      const lastWeek = new Date(now.setDate(now.getDate() - 7)).toISOString();
+      query = query.gte('created_at', lastWeek);
+    } else if (reportDateRange === 'month') {
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      query = query.gte('created_at', startOfMonth);
+    } else if (reportDateRange === 'custom' && customStartDate && customEndDate) {
+      query = query.gte('created_at', `${customStartDate}T00:00:00`).lte('created_at', `${customEndDate}T23:59:59`);
+    }
+
+    const { data, error } = await query;
+    if (!error && data) {
+      setReportData(data);
+    }
+    setReportLoading(false);
+  };
+
+  useEffect(() => {
+    if (userRole === 'report') {
+      fetchReportData();
+    }
+  }, [userRole, reportDateRange, customStartDate, customEndDate]);
+
+  // --- Export Data ke File CSV Excel ---
+  const handleExportToExcel = () => {
+    if (reportData.length === 0) return alert('Tidak ada data laporan untuk di-export!');
+
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += "ID Order,Tanggal & Waktu,Tipe Order,Platform / Meja,Nama Pelanggan,Subtotal (Rp),Diskon (Rp),Total Akhir (Rp),Status Bayar,Detail Menu\n";
+
+    reportData.forEach(row => {
+      const dateFormatted = new Date(row.created_at).toLocaleString('id-ID').replace(/,/g, '');
+      const itemsDetail = (row.order_items || [])
+        .map(it => `${it.qty}x ${it.menu_name} (${[it.ice_level, it.sugar_level].filter(Boolean).join('/')})`)
+        .join(' | ');
+
+      const line = [
+        row.order_no || row.id,
+        `"${dateFormatted}"`,
+        row.order_type.toUpperCase(),
+        `"${row.platform || 'Dine-In'}"`,
+        `"${row.customer_name || '-'}"`,
+        row.subtotal,
+        row.discount,
+        row.total_amount,
+        row.is_paid ? 'LUNAS' : 'BELUM',
+        `"${itemsDetail}"`
+      ].join(",");
+
+      csvContent += line + "\n";
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Laporan_Keuangan_TableTalk_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  
   // State Form Owner Mode
   const [tableForm, setTableForm] = useState({ id: null, number: '' });
   const [isEditingTable, setIsEditingTable] = useState(false);
@@ -1262,8 +1364,15 @@ const handleConfirmTakeawayOrder = async () => {
         </div>
 
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button style={userRole === 'cashier' ? styles.activeRoleBtn : styles.roleBtn} onClick={() => handleRoleChangeRequest('cashier')}>Kasir Mode</button>
-          <button style={userRole === 'owner' ? styles.activeRoleBtn : styles.roleBtn} onClick={() => handleRoleChangeRequest('owner')}>Owner Mode</button>
+          <button style={userRole === 'cashier' ? styles.activeRoleBtn : styles.roleBtn} onClick={() => handleRoleChangeRequest('cashier')}>
+            🛒 Kasir Mode
+          </button>
+          <button style={userRole === 'owner' ? styles.activeRoleBtn : styles.roleBtn} onClick={() => handleRoleChangeRequest('owner')}>
+            ⚙️ Owner Mode
+          </button>
+          <button style={userRole === 'report' ? styles.activeRoleBtn : styles.roleBtn} onClick={() => handleRoleChangeRequest('report')}>
+            📈 Report Mode
+          </button>
         </div>
       </header>
 
@@ -1631,7 +1740,163 @@ const handleConfirmTakeawayOrder = async () => {
 
         </div>
       ) : (
-        /* Mode Kasir */
+        
+      /* 2. Mode Report (Halaman Laporan Keuangan Modern & Futuristik) */
+        <div style={{ padding: '24px', overflowY: 'auto', flex: 1, boxSizing: 'border-box' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '22px', fontWeight: '700', background: 'linear-gradient(to right, #38bdf8, #818cf8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                📊 Laporan & Financial Analytics
+              </h2>
+              <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#94a3b8' }}>
+                Rekap real-time seluruh omzet & rincian transaksi kasir
+              </p>
+            </div>
+
+            <button 
+              onClick={handleExportToExcel}
+              style={{
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                color: '#fff',
+                border: 'none',
+                padding: '10px 18px',
+                borderRadius: '8px',
+                fontWeight: '600',
+                fontSize: '13px',
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(16, 185, 129, 0.25)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+            >
+              📥 Export to Excel (.CSV)
+            </button>
+          </div>
+
+          {/* Filter Tanggal */}
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '24px', background: '#1e293b', padding: '12px 16px', borderRadius: '10px', border: '1px solid #334155' }}>
+            <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: '500' }}>Rentang Waktu:</span>
+            {['today', 'week', 'month', 'custom'].map(type => (
+              <button
+                key={type}
+                onClick={() => setReportDateRange(type)}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '20px',
+                  border: '1px solid #334155',
+                  background: reportDateRange === type ? '#3b82f6' : '#0f172a',
+                  color: reportDateRange === type ? '#fff' : '#94a3b8',
+                  fontSize: '12px',
+                  fontWeight: reportDateRange === type ? '600' : 'normal',
+                  cursor: 'pointer'
+                }}
+              >
+                {type === 'today' ? 'Hari Ini' : type === 'week' ? '7 Hari Terakhir' : type === 'month' ? 'Bulan Ini' : 'Custom Tanggal'}
+              </button>
+            ))}
+
+            {reportDateRange === 'custom' && (
+              <div style={{ display: 'flex', gap: '8px', marginLeft: 'auto', alignItems: 'center' }}>
+                <input type="date" value={customStartDate} onChange={(e) => setCustomStartDate(e.target.value)} style={styles.inputField} />
+                <span style={{ color: '#94a3b8' }}>s/d</span>
+                <input type="date" value={customEndDate} onChange={(e) => setCustomEndDate(e.target.value)} style={styles.inputField} />
+              </div>
+            )}
+          </div>
+
+          {/* Metrics Summary Cards */}
+          {(() => {
+            const totalRevenue = reportData.reduce((sum, item) => sum + Number(item.total_amount), 0);
+            const totalDineIn = reportData.filter(i => i.order_type === 'dine-in').reduce((sum, item) => sum + Number(item.total_amount), 0);
+            const totalTakeaway = reportData.filter(i => i.order_type === 'takeaway').reduce((sum, item) => sum + Number(item.total_amount), 0);
+            const totalDiscount = reportData.reduce((sum, item) => sum + Number(item.discount || 0), 0);
+
+            return (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', padding: '16px', borderRadius: '12px', border: '1px solid #334155', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.3)' }}>
+                  <small style={{ color: '#94a3b8', fontSize: '12px' }}>Total Omzet Lunas</small>
+                  <div style={{ fontSize: '22px', fontWeight: '800', color: '#34d399', marginTop: '6px' }}>
+                    Rp {totalRevenue.toLocaleString()}
+                  </div>
+                  <small style={{ color: '#64748b', fontSize: '11px' }}>{reportData.length} Transaksi</small>
+                </div>
+
+                <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', padding: '16px', borderRadius: '12px', border: '1px solid #334155' }}>
+                  <small style={{ color: '#94a3b8', fontSize: '12px' }}>Omzet Dine-In</small>
+                  <div style={{ fontSize: '20px', fontWeight: '700', color: '#60a5fa', marginTop: '6px' }}>
+                    Rp {totalDineIn.toLocaleString()}
+                  </div>
+                </div>
+
+                <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', padding: '16px', borderRadius: '12px', border: '1px solid #334155' }}>
+                  <small style={{ color: '#94a3b8', fontSize: '12px' }}>Omzet Takeaway / Online</small>
+                  <div style={{ fontSize: '20px', fontWeight: '700', color: '#f59e0b', marginTop: '6px' }}>
+                    Rp {totalTakeaway.toLocaleString()}
+                  </div>
+                </div>
+
+                <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', padding: '16px', borderRadius: '12px', border: '1px solid #334155' }}>
+                  <small style={{ color: '#94a3b8', fontSize: '12px' }}>Total Diskon Diberikan</small>
+                  <div style={{ fontSize: '20px', fontWeight: '700', color: '#f87171', marginTop: '6px' }}>
+                    - Rp {totalDiscount.toLocaleString()}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Tabel Detail Transaksi */}
+          <div style={{ background: '#1e293b', borderRadius: '12px', border: '1px solid #334155', overflow: 'hidden' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid #334155', fontWeight: '600', fontSize: '14px', color: '#e2e8f0' }}>
+              Riwayat Transaksi Terbayar
+            </div>
+
+            {reportLoading ? (
+              <div style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>Memuat data laporan...</div>
+            ) : reportData.length === 0 ? (
+              <div style={{ padding: '30px', textAlign: 'center', color: '#64748b' }}>Belum ada data transaksi terbayar pada periode ini.</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ background: '#0f172a', color: '#94a3b8', borderBottom: '1px solid #334155' }}>
+                    <th style={{ padding: '12px 16px' }}>Order No / Ref</th>
+                    <th style={{ padding: '12px 16px' }}>Waktu</th>
+                    <th style={{ padding: '12px 16px' }}>Tipe / Platform</th>
+                    <th style={{ padding: '12px 16px' }}>Subtotal</th>
+                    <th style={{ padding: '12px 16px' }}>Diskon</th>
+                    <th style={{ padding: '12px 16px' }}>Total Akhir</th>
+                    <th style={{ padding: '12px 16px' }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportData.map((ord, idx) => (
+                    <tr key={ord.id} style={{ borderBottom: '1px solid #334155', background: idx % 2 === 0 ? '#1e293b' : '#172131' }}>
+                      <td style={{ padding: '12px 16px', fontWeight: '600', color: '#38bdf8' }}>{ord.order_no || `#${ord.id.slice(0, 6)}`}</td>
+                      <td style={{ padding: '12px 16px', color: '#94a3b8' }}>{new Date(ord.created_at).toLocaleString('id-ID')}</td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <span style={{ padding: '3px 8px', borderRadius: '6px', fontSize: '11px', background: ord.order_type === 'dine-in' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(245, 158, 11, 0.2)', color: ord.order_type === 'dine-in' ? '#60a5fa' : '#fbbf24' }}>
+                          {ord.order_type.toUpperCase()} ({ord.platform || 'On Site'})
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>Rp {Number(ord.subtotal).toLocaleString()}</td>
+                      <td style={{ padding: '12px 16px', color: '#f87171' }}>- Rp {Number(ord.discount).toLocaleString()}</td>
+                      <td style={{ padding: '12px 16px', fontWeight: '700', color: '#34d399' }}>Rp {Number(ord.total_amount).toLocaleString()}</td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <span style={{ background: 'rgba(16, 185, 129, 0.2)', color: '#34d399', padding: '3px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '600' }}>
+                          LUNAS
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      ) : (
+      
+      /* Mode Kasir */
         <div style={styles.mainLayout}>
           {posMode === 'dine-in' ? (
             /* ================= DINE-IN MODE ================= */
