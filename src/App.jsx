@@ -1739,7 +1739,7 @@ const handleConfirmTakeawayOrder = async () => {
           </div>
 
         </div>
-      ) : (
+      ) : userRole === 'report' ? (
         
       /* 2. Mode Report (Halaman Laporan Keuangan Modern & Futuristik) */
         <div style={{ padding: '24px', overflowY: 'auto', flex: 1, boxSizing: 'border-box' }}>
