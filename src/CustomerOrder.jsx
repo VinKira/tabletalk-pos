@@ -304,14 +304,18 @@ const checkCategoryOptions = (menuItem) => {
                 <span style={styles.menuCategoryBadge}>{menu.category || 'MENU'}</span>
               </div>
 
-              <div style={styles.menuInfo}>
+              {/* Area Nama Menu (Mengisi ruang kosong di atas) */}
+              <div style={styles.menuNameWrapper}>
                 <h4 style={styles.menuName}>{menu.name}</h4>
-                <div style={styles.menuPrice}>Rp {Number(menu.price).toLocaleString('id-ID')}</div>
               </div>
 
-              <button style={styles.addBtn} onClick={() => handleAddToCart(menu)}>
-                + Tambah
-              </button>
+              {/* Area Bawah (Harga + Tombol Tambah yang selalu berdekatan) */}
+              <div style={styles.menuFooterWrapper}>
+                <div style={styles.menuPrice}>Rp {Number(menu.price).toLocaleString('id-ID')}</div>
+                <button style={styles.addBtn} onClick={() => handleAddToCart(menu)}>
+                  + Tambah
+                </button>
+              </div>
             </div>
           );
         })}
@@ -674,12 +678,17 @@ const styles = {
     borderRadius: '4px',
     letterSpacing: '1px',
   },
-  menuInfo: {
+  menuNameWrapper: {
     flex: 1,
     display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: '8px',
+  },
+  menuFooterWrapper: {
+    display: 'flex',
     flexDirection: 'column',
-    justifyContent: 'flex-start',
-    marginBottom: '12px',
+    gap: '8px',
   },
   menuName: {
     fontSize: '14px',
