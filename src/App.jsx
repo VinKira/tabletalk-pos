@@ -475,6 +475,18 @@ const fetchActiveOrders = async (currentRules = null) => {
   useEffect(() => {
     if (userRole === 'report') {
       fetchReportData();
+
+      // Listen perubahan data transaksi secara realtime saat membuka Report Mode
+      const reportChannel = supabase
+        .channel('public:report_orders_realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+          fetchReportData();
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(reportChannel);
+      };
     }
   }, [userRole, reportDateRange, customStartDate, customEndDate]);
 
@@ -1127,6 +1139,7 @@ const getTableRecap = (tableId) => {
       setCurrentCart(prev => { const n = { ...prev }; delete n[tableId]; return n; });
       fetchTables();
       fetchActiveOrders();
+      fetchReportData();
 
       if (!isZeroPayment) alert('Pembayaran Sukses! Struk Berhasil Dicetak.');
       setSelectedTable(prev => ({ ...prev, status: 'available' }));
@@ -1252,6 +1265,7 @@ const handleConfirmTakeawayOrder = async () => {
     if (error) return alert('Gagal konfirmasi pembayaran: ' + error.message);
     setShowTakeawayPaymentModal(false);
     fetchActiveOrders();
+    fetchReportData();
     alert(`Pembayaran Order ${order.orderNo} Sukses & Struk Dicetak!`);
   };
 
