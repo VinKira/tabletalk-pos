@@ -675,6 +675,10 @@ const styles = {
     letterSpacing: '1px',
   },
   menuInfo: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'flex-start',
     marginBottom: '12px',
   },
   menuName: {
