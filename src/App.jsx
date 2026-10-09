@@ -423,54 +423,67 @@ const fetchActiveOrders = async (currentRules = null) => {
   };
 
 // --- Fetch Data Laporan Keuangan (Fixed Date Filter) ---
-  const fetchReportData = async () => {
-    setReportLoading(true);
-    let query = supabase
-      .from('orders')
-      .select(`
-        id,
-        order_no,
-        order_type,
-        platform,
-        customer_name,
-        subtotal,
-        discount,
-        total_amount,
-        is_paid,
-        created_at,
-        order_items (
-          menu_name,
-          qty,
-          price,
-          ice_level,
-          sugar_level
-        )
-      `)
-      .eq('is_paid', true)
-      .order('created_at', { ascending: false });
+const fetchReportData = async () => {
+  setReportLoading(true);
+  
+  let query = supabase
+    .from('orders')
+    .select(`
+      id,
+      order_no,
+      order_type,
+      platform,
+      customer_name,
+      subtotal,
+      discount,
+      total_amount,
+      is_paid,
+      created_at,
+      order_items (
+        menu_name,
+        qty,
+        price,
+        ice_level,
+        sugar_level
+      )
+    `)
+    .eq('is_paid', true)
+    .order('created_at', { ascending: false });
 
-    const now = new Date();
-    
-    if (reportDateRange === 'today') {
-      const todayStr = now.toISOString().split('T')[0];
-      query = query.gte('created_at', `${todayStr}T00:00:00`).lte('created_at', `${todayStr}T23:59:59`);
-    } else if (reportDateRange === 'week') {
-      const startOfWeek = new Date();
-      startOfWeek.setDate(now.getDate() - 7);
-      query = query.gte('created_at', startOfWeek.toISOString());
-    } else if (reportDateRange === 'month') {
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-      query = query.gte('created_at', startOfMonth);
-    } else if (reportDateRange === 'custom' && customStartDate && customEndDate) {
-      query = query.gte('created_at', `${customStartDate}T00:00:00`).lte('created_at', `${customEndDate}T23:59:59`);
-    }
+  const now = new Date();
 
-    const { data, error } = await query;
-    if (!error && data) {
-      setReportData(data);
-    }
-    setReportLoading(false);
-  };
+  if (reportDateRange === 'today') {
+    // Ambil batas awal hari ini (00:00:00 jam lokal)
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    // Ambil batas akhir hari ini (23:59:59 jam lokal)
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+    query = query
+      .gte('created_at', startOfToday.toISOString())
+      .lte('created_at', endOfToday.toISOString());
+
+  } else if (reportDateRange === 'week') {
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7, 0, 0, 0, 0);
+    query = query.gte('created_at', startOfWeek.toISOString());
+
+  } else if (reportDateRange === 'month') {
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    query = query.gte('created_at', startOfMonth.toISOString());
+
+  } else if (reportDateRange === 'custom' && customStartDate && customEndDate) {
+    const startCustom = new Date(`${customStartDate}T00:00:00`);
+    const endCustom = new Date(`${customEndDate}T23:59:59`);
+    query = query
+      .gte('created_at', startCustom.toISOString())
+      .lte('created_at', endCustom.toISOString());
+  }
+
+  const { data, error } = await query;
+  if (!error && data) {
+    setReportData(data);
+  }
+  setReportLoading(false);
+};
 
   useEffect(() => {
     if (userRole === 'report') {
