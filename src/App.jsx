@@ -426,10 +426,31 @@ const fetchActiveOrders = async (currentRules = null) => {
 const fetchReportData = async () => {
   setReportLoading(true);
   
-  // Ambil transaksi yang sudah lunas (is_paid = true) ATAU yang statusnya sudah completed
+  // Memanggil order_items (Takeaway) dan order_batches -> order_items (Dine-In)
   let query = supabase
     .from('orders')
-    .select('*')
+    .select(`
+      *,
+      order_items (
+        id,
+        menu_name,
+        price,
+        qty,
+        ice_level,
+        sugar_level
+      ),
+      order_batches (
+        id,
+        order_items (
+          id,
+          menu_name,
+          price,
+          qty,
+          ice_level,
+          sugar_level
+        )
+      )
+    `)
     .or('is_paid.eq.true,status.eq.completed')
     .order('created_at', { ascending: false });
 
@@ -482,7 +503,7 @@ const fetchReportData = async () => {
   }, [userRole, reportDateRange, customStartDate, customEndDate]);
 
 // --- Export Data ke File CSV Excel ---
-  const handleExportToExcel = () => {
+const handleExportToExcel = () => {
     if (reportData.length === 0) return alert('Tidak ada data laporan untuk di-export!');
 
     let csvContent = "\uFEFF"; 
@@ -505,11 +526,42 @@ const fetchReportData = async () => {
     reportData.forEach(row => {
       const dateFormatted = new Date(row.created_at).toLocaleString('id-ID').replace(/,/g, '');
       
-      const itemsDetail = (row.order_items || [])
-        .map(it => `${it.qty}x ${it.menu_name || it.name} (${[it.ice_level, it.sugar_level].filter(Boolean).join('/')})`)
+      // Ambil item pesanan gabungan (Dine-In via order_batches / Takeaway via order_items)
+      let allItems = [];
+      if (Array.isArray(row.order_items) && row.order_items.length > 0) {
+        allItems = row.order_items;
+      } else if (Array.isArray(row.order_batches)) {
+        row.order_batches.forEach(b => {
+          if (Array.isArray(b.order_items)) {
+            allItems = [...allItems, ...b.order_items];
+          }
+        });
+      }
+
+      // Grouping item yang sama untuk baris Excel yang rapi
+      const itemsFormattedMap = {};
+      allItems.forEach(it => {
+        const name = it.menu_name || it.name || 'Menu';
+        const ice = it.ice_level || '';
+        const sugar = it.sugar_level || '';
+        const key = `${name}_${ice}_${sugar}`;
+
+        if (itemsFormattedMap[key]) {
+          itemsFormattedMap[key].qty += Number(it.qty || 1);
+        } else {
+          itemsFormattedMap[key] = {
+            name,
+            qty: Number(it.qty || 1),
+            options: [ice, sugar].filter(Boolean).join('/')
+          };
+        }
+      });
+
+      const itemsDetail = Object.values(itemsFormattedMap)
+        .map(it => `${it.qty}x ${it.name}${it.options ? ` (${it.options})` : ''}`)
         .join(' | ');
 
-      const computedSubtotal = Number(row.subtotal) || (row.order_items || []).reduce((s, i) => s + (Number(i.price) * Number(i.qty)), 0);
+      const computedSubtotal = Number(row.subtotal) || allItems.reduce((s, i) => s + (Number(i.price) * Number(i.qty)), 0);
       const computedDiscount = Number(row.discount) || 0;
       const computedTotal = Number(row.total_amount) || Math.max(0, computedSubtotal - computedDiscount);
 
@@ -522,7 +574,7 @@ const fetchReportData = async () => {
         computedSubtotal,
         computedDiscount,
         computedTotal,
-        row.is_paid ? "LUNAS" : "BELUM LUNAS",
+        row.is_paid || row.status === 'completed' ? "LUNAS" : "BELUM LUNAS",
         `"${itemsDetail || '-'}"`
       ].join(";");
 
