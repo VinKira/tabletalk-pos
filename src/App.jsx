@@ -1064,6 +1064,7 @@ const executeAddToCartDineIn = (menuItem, iceOpt, sugarOpt) => {
     setCurrentCart(prev => ({ ...prev, [tableId]: cart.filter(item => item.id !== itemId) }));
   };
 
+  // --- Confirm Order Dine-In (With Exception Category 'Table' for Kitchen Printer) ---
   const handleConfirmOrder = async () => {
     if (!selectedTable) return;
     const tableId = selectedTable.id;
@@ -1100,15 +1101,24 @@ const executeAddToCartDineIn = (menuItem, iceOpt, sugarOpt) => {
       const { error: itemsErr } = await supabase.from('order_items').insert(itemsToInsert);
       if (itemsErr) throw itemsErr;
 
+      // Filter item yang akan dicetak di Printer Dapur (Abaikan menu dengan kategori 'Table')
+      const kitchenItems = cart.filter(item => (item.category || '').toLowerCase() !== 'table');
+
       setCurrentCart(prev => ({ ...prev, [tableId]: [] }));
       fetchActiveOrders();
-      alert('Order berhasil dikonfirmasi & dikirim ke Printer Dapur!');
+
+      // Trigger Notifikasi Cetak Dapur
+      if (kitchenItems.length > 0) {
+        alert('Order berhasil dikonfirmasi & item makanan/minuman dikirim ke Printer Dapur!');
+      } else {
+        alert('Order berhasil dikonfirmasi! (Menu kategori Table disimpan tanpa dicetak di label dapur)');
+      }
     } catch (err) {
       alert('Gagal Confirm Order: ' + (err.message || 'Terjadi kesalahan'));
     }
   };
-
-const getTableRecap = (tableId) => {
+  
+  const getTableRecap = (tableId) => {
     const batches = confirmedOrders[tableId] || [];
     const recapMap = {};
     const promoRecapMap = {};
