@@ -426,11 +426,11 @@ const fetchActiveOrders = async (currentRules = null) => {
 const fetchReportData = async () => {
   setReportLoading(true);
   
-  // Mengambil data orders lunas secara langsung tanpa query nested join yang error
+  // Ambil transaksi yang sudah lunas (is_paid = true) ATAU yang statusnya sudah completed
   let query = supabase
     .from('orders')
     .select('*')
-    .eq('is_paid', true)
+    .or('is_paid.eq.true,status.eq.completed')
     .order('created_at', { ascending: false });
 
   const now = new Date();
