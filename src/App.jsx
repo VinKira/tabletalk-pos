@@ -426,61 +426,39 @@ const fetchActiveOrders = async (currentRules = null) => {
 const fetchReportData = async () => {
   setReportLoading(true);
   
+  // Mengambil data orders lunas secara langsung tanpa query nested join yang error
   let query = supabase
     .from('orders')
-    .select(`
-      id,
-      order_no,
-      order_type,
-      platform,
-      customer_name,
-      subtotal,
-      discount,
-      total_amount,
-      is_paid,
-      created_at,
-      order_items (
-        menu_name,
-        qty,
-        price,
-        ice_level,
-        sugar_level
-      )
-    `)
+    .select('*')
     .eq('is_paid', true)
     .order('created_at', { ascending: false });
 
   const now = new Date();
 
   if (reportDateRange === 'today') {
-    // Ambil batas awal hari ini (00:00:00 jam lokal)
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-    // Ambil batas akhir hari ini (23:59:59 jam lokal)
-    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-
-    query = query
-      .gte('created_at', startOfToday.toISOString())
-      .lte('created_at', endOfToday.toISOString());
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).toISOString();
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999).toISOString();
+    query = query.gte('created_at', startOfToday).lte('created_at', endOfToday);
 
   } else if (reportDateRange === 'week') {
-    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7, 0, 0, 0, 0);
-    query = query.gte('created_at', startOfWeek.toISOString());
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7, 0, 0, 0, 0).toISOString();
+    query = query.gte('created_at', startOfWeek);
 
   } else if (reportDateRange === 'month') {
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-    query = query.gte('created_at', startOfMonth.toISOString());
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0).toISOString();
+    query = query.gte('created_at', startOfMonth);
 
   } else if (reportDateRange === 'custom' && customStartDate && customEndDate) {
-    const startCustom = new Date(`${customStartDate}T00:00:00`);
-    const endCustom = new Date(`${customEndDate}T23:59:59`);
-    query = query
-      .gte('created_at', startCustom.toISOString())
-      .lte('created_at', endCustom.toISOString());
+    const startCustom = new Date(`${customStartDate}T00:00:00`).toISOString();
+    const endCustom = new Date(`${customEndDate}T23:59:59`).toISOString();
+    query = query.gte('created_at', startCustom).lte('created_at', endCustom);
   }
 
   const { data, error } = await query;
   if (!error && data) {
     setReportData(data);
+  } else if (error) {
+    console.error("Gagal ambil data report:", error.message);
   }
   setReportLoading(false);
 };
