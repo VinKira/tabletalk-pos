@@ -651,6 +651,81 @@ const handleExportToExcel = () => {
     localStorage.setItem('pos_draft_takeaway_cart', JSON.stringify(takeawayCart));
   }, [takeawayCart]);
 
+// TEMPATKAN HELPER PRINT DI SINI (SEBELUM FUNGSI CRUD MEJA)
+  // ==========================================
+  const triggerThermalPrintHTML = (title, items, metaInfo = {}) => {
+    const printWindow = window.open('', '_blank', 'width=350,height=600');
+    if (!printWindow) {
+      alert('Pop-up terblokir oleh browser! Izinkan pop-up untuk melihat preview cetak.');
+      return;
+    }
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>${title}</title>
+        <style>
+          body {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 12px;
+            width: 280px;
+            margin: 0 auto;
+            padding: 10px;
+            color: #000;
+            background: #fff;
+          }
+          .center { text-align: center; }
+          .bold { font-weight: bold; }
+          .line { border-bottom: 1px dashed #000; margin: 8px 0; }
+          .flex { display: flex; justify-content: space-between; }
+          .item-row { margin-bottom: 4px; }
+          .sub-item { font-size: 10px; padding-left: 12px; color: #333; }
+        </style>
+      </head>
+      <body>
+        <div class="center bold" style="font-size: 14px;">TABLE TALK COFFEE</div>
+        <div class="center" style="font-size: 11px;">TableTalk POS System</div>
+        <div class="line"></div>
+        <div class="bold center">${title}</div>
+        <div style="font-size: 11px; margin: 4px 0;">
+          <div>Waktu: ${new Date().toLocaleString('id-ID')}</div>
+          ${metaInfo.tableName ? `<div>Meja: ${metaInfo.tableName}</div>` : ''}
+          ${metaInfo.orderNo ? `<div>No Order: ${metaInfo.orderNo} (${metaInfo.platform || 'On Site'})</div>` : ''}
+        </div>
+        <div class="line"></div>
+        <div>
+          ${items.map(it => `
+            <div class="item-row">
+              <div class="flex">
+                <span><b>${it.qty}x</b>${it.name}</span>
+                <span>${it.price ? `Rp ${(it.price * it.qty).toLocaleString()}` : ''}</span>
+              </div>
+              ${(it.iceLevel || it.sugarLevel) ? `<div class="sub-item">↳ [${[it.iceLevel, it.sugarLevel].filter(Boolean).join(' • ')}]</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+        ${metaInfo.subTotal !== undefined ? `
+          <div class="line"></div>
+          <div class="flex"><span>Subtotal:</span><span>Rp ${metaInfo.subTotal.toLocaleString()}</span></div>${metaInfo.discount > 0 ? `<div class="flex" style="color: red;"><span>Diskon:</span><span>- Rp ${metaInfo.discount.toLocaleString()}</span></div>` : ''}
+          <div class="flex bold" style="font-size: 13px; margin-top: 4px;"><span>TOTAL:</span><span>Rp ${metaInfo.finalTotal.toLocaleString()}</span></div>
+          <div class="center" style="margin-top: 10px; font-weight: bold;">*** LUNAS ***</div>
+        ` : ''}
+        <div class="line"></div>
+        <div class="center" style="font-size: 10px; margin-top: 8px;">Terima Kasih Telah Berkunjung!</div>
+        <script>
+          window.onload = function() {
+            window.print();
+          }
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  };
+  
   // --- 1. Manajemen Meja CRUD ---
   const handleSaveTable = async (e) => {
     e.preventDefault();
@@ -1104,6 +1179,11 @@ const executeAddToCartDineIn = (menuItem, iceOpt, sugarOpt) => {
       // Filter item yang akan dicetak di Printer Dapur (Abaikan menu dengan kategori 'Table')
       const kitchenItems = cart.filter(item => (item.category || '').toLowerCase() !== 'table');
 
+      // --- TRIGGER PREVIEW PRINT LABEL DAPUR ---
+      if (kitchenItems.length > 0) {
+        triggerThermalPrintHTML(`LABEL DAPUR (${selectedTable.number})`, kitchenItems, { tableName: selectedTable.number });
+      }
+      
       setCurrentCart(prev => ({ ...prev, [tableId]: [] }));
       fetchActiveOrders();
 
@@ -1180,6 +1260,15 @@ const executeAddToCartDineIn = (menuItem, iceOpt, sugarOpt) => {
     const { subTotal, autoDiscount, finalTotal } = getTableRecap(tableId);
 
     try {
+      // --- TRIGGER PREVIEW PRINT STRUK PEMBAYARAN KASIR ---
+      if (!isZeroPayment && recapList.length > 0) {
+        triggerThermalPrintHTML(`STRUK PEMBAYARAN`, recapList, {
+          tableName: selectedTable.number,
+          subTotal,
+          discount: autoDiscount,
+          finalTotal
+        });
+      }
       const { error: orderErr } = await supabase
         .from('orders')
         .update({ subtotal: subTotal, discount: autoDiscount, total_amount: finalTotal, is_paid: true, status: 'completed' })
