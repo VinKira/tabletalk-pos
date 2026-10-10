@@ -1391,6 +1391,15 @@ const handleConfirmTakeawayOrder = async () => {
     const { error: itemsErr } = await supabase.from('order_items').insert(itemsToInsert);
     if (itemsErr) return alert('Gagal menyimpan item takeaway: ' + itemsErr.message);
 
+    // --- TAMBAHKAN TRIGGER PRINT LABEL DAPUR TAKEAWAY DI SINI ---
+    const kitchenItemsTakeaway = takeawayCart.filter(item => (item.category || '').toLowerCase() !== 'table');
+    if (kitchenItemsTakeaway.length > 0) {
+      triggerThermalPrintHTML(`LABEL DAPUR (${generatedOrderNo})`, kitchenItemsTakeaway, {
+        orderNo: generatedOrderNo,
+        platform: takeawayPlatform
+      });
+    }
+  
     setTakeawayCart([]);
     setTakeawayCustomerName('');
     setTakeawayOrderNoInput('');
@@ -1399,6 +1408,18 @@ const handleConfirmTakeawayOrder = async () => {
   };
 
   const handlePayTakeaway = async (order) => {
+
+    // --- TAMBAHKAN TRIGGER PRINT STRUK PEMBAYARAN TAKEAWAY DI SINI ---
+    if (order.items && order.items.length > 0) {
+      triggerThermalPrintHTML(`STRUK PEMBAYARAN`, order.items, {
+        orderNo: order.orderNo,
+        platform: order.platform,
+        subTotal: order.subTotal,
+        discount: order.discount,
+        finalTotal: order.total
+      });
+    }
+    
     const { error } = await supabase
       .from('orders')
       .update({ subtotal: order.subTotal, discount: order.discount, total_amount: order.total, is_paid: true })
