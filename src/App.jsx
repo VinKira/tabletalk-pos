@@ -621,8 +621,16 @@ const handleExportToExcel = () => {
   const [takeawayCustomerName, setTakeawayCustomerName] = useState('');
   const [takeawayOrderNoInput, setTakeawayOrderNoInput] = useState('');
   const [autoTakeawayCounter, setAutoTakeawayCounter] = useState(() => {
-    const saved = localStorage.getItem('pos_takeaway_counter');
-    return saved ? JSON.parse(saved) : 1;
+    const todayStr = new Date().toISOString().split('T')[0];
+    const savedDate = localStorage.getItem('pos_takeaway_counter_date');
+    const savedCounter = localStorage.getItem('pos_takeaway_counter');
+  
+    if (savedDate !== todayStr) {
+      localStorage.setItem('pos_takeaway_counter_date', todayStr);
+      localStorage.setItem('pos_takeaway_counter', '1');
+      return 1;
+    }
+    return savedCounter ? JSON.parse(savedCounter) : 1;
   });
   const [takeawayCart, setTakeawayCart] = useState(() => {
     const saved = localStorage.getItem('pos_draft_takeaway_cart');
@@ -1344,6 +1352,18 @@ const handleConfirmCustomOptions = () => {
 const handleConfirmTakeawayOrder = async () => {
     if (takeawayCart.length === 0) return alert('Keranjang Takeaway kosong!');
 
+    // --- TAMBAHKAN PENGECEKAN GANTI HARI DI SINI ---
+    const todayStr = new Date().toISOString().split('T')[0];
+    const savedDate = localStorage.getItem('pos_takeaway_counter_date');
+    let currentCounter = autoTakeawayCounter;
+
+    if (savedDate !== todayStr) {
+      currentCounter = 1;
+      setAutoTakeawayCounter(1);
+      localStorage.setItem('pos_takeaway_counter_date', todayStr);
+      localStorage.setItem('pos_takeaway_counter', '1');
+    }
+  
     let generatedOrderNo = '';
     if (takeawayPlatform === 'On Site') {
       generatedOrderNo = `#${String(autoTakeawayCounter).padStart(3, '0')}`;
