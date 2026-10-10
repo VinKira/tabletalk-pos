@@ -712,7 +712,7 @@ const handleExportToExcel = () => {
           <div class="center" style="margin-top: 10px; font-weight: bold;">*** LUNAS ***</div>
         ` : ''}
         <div class="line"></div>
-        <div class="center" style="font-size: 10px; margin-top: 8px;">Terima Kasih Telah Berkunjung!</div>
+        <div class="center" style="font-size: 10px; margin-top: 8px;">Thank you & Love you <3</div>
         <script>
           window.onload = function() {
             window.print();
